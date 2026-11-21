@@ -1,0 +1,42 @@
+{
+  "name": "@opendil/runtime",
+  "version": "0.1.0",
+  "description": "Framework-agnostic isolated browser sandbox runtime for DIL (Dynamic Interface Language)",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/sandbox-worker.d.cts",
+      "import": "./dist/sandbox-worker.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "gen": "node scripts/gen-assets.mjs",
+    "build": "node scripts/gen-assets.mjs && tsc -p tsconfig.build.json && cp src/sandbox-worker.cjs src/sandbox-worker.d.cts dist/",
+    "typecheck": "node scripts/gen-assets.mjs && tsc --noEmit",
+    "test": "node scripts/gen-assets.mjs && node --test \"src/*.test.ts\""
+  },
+  "dependencies": {
+    "@opendil/core": "workspace:*"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.3",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

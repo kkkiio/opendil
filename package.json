@@ -1,0 +1,31 @@
+{
+  "name": "opendil",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-source reference implementation, specification, and corpus for DIL (Dynamic Interface Language)",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test && pnpm test:conformance",
+    "test:conformance": "node --test \"conformance/*.test.ts\"",
+    "test:update": "UPDATE_SNAPSHOTS=1 pnpm -r test",
+    "check": "biome check .",
+    "check:write": "biome check --write .",
+    "format": "biome format --write .",
+    "lint": "biome lint ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.15",
+    "@opendil/core": "workspace:*",
+    "@opendil/runtime": "workspace:*",
+    "@types/node": "^25.9.1",
+    "fast-check": "^4.10.3",
+    "typescript": "^6.0.3"
+  }
+}

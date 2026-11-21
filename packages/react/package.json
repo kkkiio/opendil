@@ -1,0 +1,47 @@
+{
+  "name": "@opendil/react",
+  "version": "0.1.0",
+  "description": "React renderer and default primitive catalog for DIL (Dynamic Interface Language)",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/*.test.ts\""
+  },
+  "dependencies": {
+    "@opendil/core": "workspace:*",
+    "@opendil/runtime": "workspace:*",
+    "clsx": "^2.1.1",
+    "katex": "^0.16.47",
+    "lucide-react": "^1.16.0",
+    "tailwind-merge": "^3.6.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.7",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

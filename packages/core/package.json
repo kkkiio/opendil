@@ -1,0 +1,44 @@
+{
+  "name": "@opendil/core",
+  "version": "0.1.0",
+  "description": "Parser, compiler, render-tree protocol, and system prompt for DIL (Dynamic Interface Language)",
+  "license": "MIT",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./prompt": {
+      "types": "./dist/prompt.d.ts",
+      "import": "./dist/prompt.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/dil.ebnf",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/*.test.ts\""
+  },
+  "dependencies": {
+    "@streamdown/cjk": "^1.0.3",
+    "@types/mdast": "^4.0.4",
+    "micromark-util-types": "^2.0.3",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
