@@ -18,6 +18,11 @@
       "!packages/**/dist",
       "!packages/**/*.gen.ts",
       "!packages/**/__snapshots__",
+      "benchmarks/**/*.ts",
+      "benchmarks/**/*.json",
+      "!benchmarks/.cache",
+      "!benchmarks/trajectories",
+      "!benchmarks/reports",
       "conformance/**/*.ts",
       "conformance/**/*.json"
     ]

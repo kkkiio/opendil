@@ -3,6 +3,9 @@ dist/
 coverage/
 *.tsbuildinfo
 packages/runtime/src/sandbox-assets.gen.ts
+benchmarks/.cache/
+benchmarks/trajectories/
+benchmarks/report.json
 .DS_Store
 .env
 .env.local

@@ -1,0 +1,23 @@
+{
+  "name": "@opendil/benchmarks",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DIL model evaluation and benchmark suite (Coding Agent + Direct Chat tracks)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/*.test.ts\"",
+    "bench": "node src/run.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^1.5.2",
+    "@earendil-works/pi-coding-agent": "^1.5.2",
+    "@opendil/core": "workspace:*",
+    "@opendil/runtime": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

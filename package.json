@@ -15,6 +15,7 @@
     "test": "pnpm -r test && pnpm test:conformance",
     "test:conformance": "node --test \"conformance/*.test.ts\"",
     "test:update": "UPDATE_SNAPSHOTS=1 pnpm -r test",
+    "bench": "pnpm --filter @opendil/benchmarks run bench",
     "check": "biome check .",
     "check:write": "biome check --write .",
     "format": "biome format --write .",

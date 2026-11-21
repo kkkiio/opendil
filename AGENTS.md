@@ -10,6 +10,7 @@ Developer guide for coding agents working in the **OpenDIL** monorepo.
 - `spec/`: Formal DIL specification (`dil.ebnf` and design/empirical reports).
 - `examples/`: Curated `.dil.md` corpus organized by pattern.
 - `conformance/`: Executable oracle tests comparing `@opendil/core` + `@opendil/runtime/worker` against captured reference artifacts.
+- `benchmarks/`: Private workspace (`@opendil/benchmarks`) for evaluating LLMs across Coding Agent (Pi + Docker sandbox) and Direct Chat tracks with selectable prompt profiles (`full` / `light`).
 
 ## Commands
 

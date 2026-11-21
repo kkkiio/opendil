@@ -96,6 +96,7 @@ const plainMarkdown = toFallbackMarkdown(doc.tree);
 - [`spec/`](./spec) — Formal EBNF grammar ([`dil.ebnf`](./spec/dil.ebnf)), component catalog, compiler/runtime & streaming specs
 - [`examples/`](./examples) — Curated `.dil.md` corpus organized by UI pattern
 - [`conformance/`](./conformance) — Executable semantic conformance suite against captured reference artifacts
+- [`benchmarks/`](./benchmarks) — Dual-track model evaluation suite (`agent` via Pi + Docker sandbox, and `chat` via OpenAI-compatible API)
 
 ## Development
 
