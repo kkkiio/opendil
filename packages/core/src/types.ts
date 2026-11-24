@@ -106,6 +106,7 @@ export type DilDiagnosticCode =
   | "malformed_terminator"
   | "unknown_block"
   | "unknown_directive"
+  | "unknown_tag"
   | "empty_app_directive"
   | "malformed_each"
   | "mismatched_tag"

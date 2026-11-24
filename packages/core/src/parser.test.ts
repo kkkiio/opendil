@@ -388,3 +388,27 @@ test("diagnostics carry 1-based line and column", () => {
     ],
   );
 });
+
+test("any tag-shaped unknown construct reports: contract B has no innocent HTML", () => {
+  // Input contract B: DIL eats dialect output, not arbitrary Markdown — so `<div>` has
+  // no "prose HTML" excuse here; off-dialect tags render literally and deserve a report.
+  for (const source of [
+    "<slider value={x}>x</slider>",
+    "<slider value = {x}>x</slider>",
+    '<slider title="a>b" value={x}>x</slider>',
+    "<div>普通</div>",
+    "<br/>",
+    "<progressbar>",
+  ]) {
+    const doc = parseDocument(source, { isStreaming: false });
+    assert.equal(doc.diagnosticSummary, "unknown_tag×1", `should report: ${source}`);
+    assert.equal(doc.diagnostics[0]?.action, "fallback");
+  }
+});
+
+test("non-tags stay quiet: comparisons, autolinks, comments, emoticons", () => {
+  for (const source of ["a < b", "<https://example.com>", "<!-- comment -->", "<3 心"]) {
+    const doc = parseDocument(source, { isStreaming: false });
+    assert.equal(doc.diagnostics.length, 0, `noise on: ${source}`);
+  }
+});
