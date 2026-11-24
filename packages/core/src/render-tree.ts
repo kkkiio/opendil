@@ -136,7 +136,7 @@ export function readTree(value: unknown, data: DilData): ResolvedNode[] {
       for (const name of site.dynamic) {
         if (!Object.hasOwn(node[1], name)) continue;
         const value: unknown = node[1][name];
-        if (name === "onClick" || name === "onChange") {
+        if (name === "onClick" || name === "onChange" || name === "onSubmit") {
           if (
             value &&
             typeof value === "object" &&

@@ -92,12 +92,16 @@ export const DIL_VOCABULARY = {
   "table-cell": { kind: "container", support: "rendered", lowered: true },
 
   // Interactive controls (`#48`). A container, not an inline atom: every control is its
-  // own layout box. `input` is deliberately absent — it is not in the corpus.
+  // own layout box. `checkbox`/`input`/`form` complete the captured control family
+  // (issues #4, corpus: checkbox×1, input×2, form×1).
   button: { kind: "container", support: "rendered", source: true },
   "radio-group": { kind: "container", support: "rendered", source: true },
   radio: { kind: "container", support: "rendered", source: true },
   label: { kind: "container", support: "rendered", source: true },
   textarea: { kind: "container", support: "rendered", source: true },
+  checkbox: { kind: "container", support: "rendered", source: true },
+  input: { kind: "container", support: "rendered", source: true },
+  form: { kind: "container", support: "rendered", source: true },
 
   // SVG (`#47`). Every one of these is in `svg-map.ts`'s allowlist.
   svg: { kind: "container", support: "rendered", source: true },

@@ -19,6 +19,9 @@ import {
 } from "./primitives/content.tsx";
 import {
   ControlButton,
+  ControlCheckbox,
+  ControlForm,
+  ControlInput,
   ControlLabel,
   ControlRadio,
   ControlRadioGroup,
@@ -412,6 +415,20 @@ function renderNode(node: ResolvedNode, key: string, svg: SvgContext | null) {
       );
     case "textarea":
       return <ControlTextarea key={key} props={props} />;
+    case "checkbox":
+      return (
+        <ControlCheckbox key={key} props={props}>
+          {rendered}
+        </ControlCheckbox>
+      );
+    case "input":
+      return <ControlInput key={key} props={props} />;
+    case "form":
+      return (
+        <ControlForm key={key} props={props}>
+          {rendered}
+        </ControlForm>
+      );
 
     default:
       break;

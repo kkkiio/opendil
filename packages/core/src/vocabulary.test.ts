@@ -47,7 +47,11 @@ test("support says what the renderer does with a tag", () => {
   assert.equal(tagEntry("Entity")?.support, "fallback");
   assert.equal(tagEntry("radio")?.support, "rendered", "#48 controls");
   assert.equal(tagEntry("textarea")?.support, "rendered", "#48 controls");
-  assert.equal(tagEntry("input"), undefined, "never invented: `input` is not in the corpus");
+  // The control family the corpus actually uses (#4): checkbox×1, input×2, form×1.
+  assert.equal(tagEntry("checkbox")?.support, "rendered");
+  assert.equal(tagEntry("input")?.support, "rendered");
+  assert.equal(tagEntry("form")?.support, "rendered");
+  assert.equal(tagEntry("dropdown"), undefined, "never invented: no corpus evidence");
   assert.equal(tagEntry("__chatgptClientDefinedWidget")?.support, "internal");
   assert.equal(tagEntry("CodeBlock")?.support, "rendered", "the model's code block renders");
 });
