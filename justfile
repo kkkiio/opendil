@@ -6,7 +6,7 @@ default:
 # The local loop, in order: reveal problems, auto-fix them, test, build.
 all:
     pnpm check
-    pnpm fmt
+    just fmt
     pnpm test
     pnpm build
 
