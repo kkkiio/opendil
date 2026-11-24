@@ -1,5 +1,5 @@
-import type { DilHandler, DilProgram, DilViewState, ResolvedNode } from "@opendil/core";
-import { readTree, readViewState } from "@opendil/core";
+import type { DilHandler, DilProgram, DilViewState, ResolvedNode } from "@kkkiio/dil-core";
+import { readTree, readViewState } from "@kkkiio/dil-core";
 import type { DilHost } from "./runtime.ts";
 import { createProgram } from "./sandbox-worker.cjs";
 

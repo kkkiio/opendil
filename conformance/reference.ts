@@ -17,7 +17,7 @@
  *     keyed it (`{ key }`), which makes "how state is named and restored" observable.
  */
 
-import type { DilArtifact } from "@opendil/runtime/worker";
+import type { DilArtifact } from "@kkkiio/dil-runtime/worker";
 
 /** One node of the reference's render output, expanded to plain data. */
 export type ReferenceNode =

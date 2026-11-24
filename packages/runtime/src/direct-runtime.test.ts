@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileDil, type DilHandler, parseDocument, type ResolvedNode, readDilViewState } from "@opendil/core";
+import { compileDil, type DilHandler, parseDocument, type ResolvedNode, readDilViewState } from "@kkkiio/dil-core";
 import { DirectRuntime } from "./direct-runtime.ts";
 
 const counter = [

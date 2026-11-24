@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileDil, type DilHandler, parseDocument, readTree } from "@opendil/core";
+import { compileDil, type DilHandler, parseDocument, readTree } from "@kkkiio/dil-core";
 import { createProgram } from "./sandbox-worker.cjs";
 
 const card = [

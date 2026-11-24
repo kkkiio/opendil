@@ -7,7 +7,7 @@
  * needed — only namespaced ids and a sane default size.
  */
 
-import type { ResolvedProps } from "@opendil/core";
+import type { ResolvedProps } from "@kkkiio/dil-core";
 import { createElement, type ReactNode } from "react";
 import { svgProps } from "../svg-map.ts";
 

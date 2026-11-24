@@ -16,7 +16,7 @@
  * dropped from both sides and reported as *skipped* rather than silently ignored.
  */
 
-import type { DilNode, ResolvedNode } from "@opendil/core";
+import type { DilNode, ResolvedNode } from "@kkkiio/dil-core";
 import type { ReferenceNode } from "./reference.ts";
 
 /**

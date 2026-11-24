@@ -6,9 +6,9 @@ Open-source reference implementation, formal specification, and public corpus fo
 
 | Package                                  | Description                                                                                   | Environment               |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------- |
-| [`@opendil/core`](./packages/core)       | Parser, compiler, render-tree protocol, and system prompt for DIL.                            | Node.js, Edge, Browser    |
-| [`@opendil/runtime`](./packages/runtime) | Framework-agnostic execution runtime for DIL — isolated sandbox or synchronous direct engine. | Browser / Node            |
-| [`@opendil/react`](./packages/react)     | React renderer and default primitive catalog for DIL.                                         | React 18 / 19 (SSR / SSG) |
+| [`@kkkiio/dil-core`](./packages/core)       | Parser, compiler, render-tree protocol, and system prompt for DIL.                            | Node.js, Edge, Browser    |
+| [`@kkkiio/dil-runtime`](./packages/runtime) | Framework-agnostic execution runtime for DIL — isolated sandbox or synchronous direct engine. | Browser / Node            |
+| [`@kkkiio/dil-react`](./packages/react)     | React renderer and default primitive catalog for DIL.                                         | React 18 / 19 (SSR / SSG) |
 
 ## Example DIL Snippet
 
@@ -26,7 +26,7 @@ Open-source reference implementation, formal specification, and public corpus fo
   </button>
   {#if revealed}
     <box background="surface-secondary" radius="md" padding={2}>
-      <text>A serializable `DilProgram` (`script` + `data`) that runs inside `@opendil/runtime`.</text>
+      <text>A serializable `DilProgram` (`script` + `data`) that runs inside `@kkkiio/dil-runtime`.</text>
     </box>
   {/if}
 </box>
@@ -37,7 +37,7 @@ Open-source reference implementation, formal specification, and public corpus fo
 ### 1. Render DIL in React
 
 ```tsx
-import { DilRenderer, DilHostContext } from "@opendil/react";
+import { DilRenderer, DilHostContext } from "@kkkiio/dil-react";
 
 export function AssistantMessage({
   source,
@@ -78,8 +78,8 @@ Customize host design-system primitives (e.g. shadcn/ui `Button`/`Textarea`, Shi
 ### 2. Parse & Compile Anywhere (Node / Edge / Browser)
 
 ```ts
-import { compileDil, parseDocument, toFallbackMarkdown } from "@opendil/core";
-import { DIL_SYSTEM_PROMPT } from "@opendil/core/prompt";
+import { compileDil, parseDocument, toFallbackMarkdown } from "@kkkiio/dil-core";
+import { DIL_SYSTEM_PROMPT } from "@kkkiio/dil-core/prompt";
 
 const doc = parseDocument(source, { isStreaming: false });
 const compiled = compileDil(doc);
@@ -98,7 +98,7 @@ For DIL you wrote yourself — a blog, docs, examples — run it in the host con
 during rendering, baking the finished HTML into the page:
 
 ```tsx
-import { DilRenderer } from "@opendil/react";
+import { DilRenderer } from "@kkkiio/dil-react";
 
 // Resolves at build time (SSG) and again in the browser on hydration.
 <DilRenderer source={dilExample} execution="direct" />

@@ -1,5 +1,5 @@
 {
-  "name": "@opendil/benchmarks",
+  "name": "@kkkiio/dil-benchmarks",
   "private": true,
   "version": "0.1.0",
   "description": "DIL model evaluation and benchmark suite (Coding Agent + Direct Chat tracks)",
@@ -14,8 +14,8 @@
   "dependencies": {
     "@earendil-works/pi-ai": "^1.5.2",
     "@earendil-works/pi-coding-agent": "^1.5.2",
-    "@opendil/core": "workspace:*",
-    "@opendil/runtime": "workspace:*"
+    "@kkkiio/dil-core": "workspace:*",
+    "@kkkiio/dil-runtime": "workspace:*"
   },
   "engines": {
     "node": ">=22.19.0"

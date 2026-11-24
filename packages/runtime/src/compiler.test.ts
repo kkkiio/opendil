@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileDil, parseDocument, type ResolvedNode, type ResolvedProps, readTree } from "@opendil/core";
+import { compileDil, parseDocument, type ResolvedNode, type ResolvedProps, readTree } from "@kkkiio/dil-core";
 import { createProgram } from "./sandbox-worker.cjs";
 
 function count(nodes: readonly ResolvedNode[]): number {

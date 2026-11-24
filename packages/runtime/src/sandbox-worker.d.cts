@@ -1,4 +1,4 @@
-import type { DilData, DilProgram, WireNode } from "@opendil/core";
+import type { DilData, DilProgram, WireNode } from "@kkkiio/dil-core";
 
 export interface DilArtifact {
   readonly code: string;

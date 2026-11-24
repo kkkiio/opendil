@@ -1,4 +1,4 @@
-import { DIL_SYSTEM_PROMPT } from "@opendil/core/prompt";
+import { DIL_SYSTEM_PROMPT } from "@kkkiio/dil-core/prompt";
 
 export type PromptProfile = "full" | "light";
 

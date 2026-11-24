@@ -1,6 +1,6 @@
 # OpenDIL Benchmarks
 
-Evaluates how effectively models use **DIL (Dynamic Interface Language)** to explain complex systems and build interactive cards, using `@opendil/core` and `@opendil/runtime/worker` for deterministic scoring.
+Evaluates how effectively models use **DIL (Dynamic Interface Language)** to explain complex systems and build interactive cards, using `@kkkiio/dil-core` and `@kkkiio/dil-runtime/worker` for deterministic scoring.
 
 ## Dual Tracks
 
@@ -9,14 +9,14 @@ Evaluates how effectively models use **DIL (Dynamic Interface Language)** to exp
 
 ## Prompt Profiles
 
-- `full` (default): Full `DIL_SYSTEM_PROMPT` from `@opendil/core/prompt` (complete reference + examples).
+- `full` (default): Full `DIL_SYSTEM_PROMPT` from `@kkkiio/dil-core/prompt` (complete reference + examples).
 - `light`: Compact syntax reference without full few-shot examples, to measure how models perform under lighter prompt budgets.
 
 ## Usage
 
 ```bash
 # Offline scorer self-test (no API key or Docker required)
-pnpm --filter @opendil/benchmarks test
+pnpm --filter @kkkiio/dil-benchmarks test
 
 # Coding Agent track (Pi + Docker sandbox for repo cases)
 pnpm bench -- --track agent --provider opencode-go --model glm-5.3

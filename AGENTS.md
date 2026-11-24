@@ -9,18 +9,18 @@ Developer guide for coding agents working in the **OpenDIL** monorepo.
 ```text
 opendil/
 ├── packages/
-│   ├── core/                      # @opendil/core — parse, stream repair, compileDil,
+│   ├── core/                      # @kkkiio/dil-core — parse, stream repair, compileDil,
 │   │                              #   render-tree protocol, system prompt. No React/DOM.
 │   ├── runtime/
 │   │   └── src/sandbox-worker.cjs # classic Web Worker script AND Node-importable CJS
 │   │                              #   (typeof-exports guard). Do not convert to ESM.
-│   └── react/                     # @opendil/react — DilRenderer (execution
+│   └── react/                     # @kkkiio/dil-react — DilRenderer (execution
 │                                  #   "sandbox" | "direct"), tokens, svg-map, KaTeX,
 │                                  #   host overrides via DilComponents.
 ├── spec/                          # formal specification: dil.ebnf + design/empirical reports
 ├── examples/                      # curated .dil.md corpus, organized by pattern
 ├── conformance/                   # executable oracle: ours vs captured reference artifacts
-└── benchmarks/                    # @opendil/benchmarks — npm-private ("private": true),
+└── benchmarks/                    # @kkkiio/dil-benchmarks — npm-private ("private": true),
                                    #   never ships answer keys
 ```
 
@@ -72,7 +72,7 @@ When asked to open or update a PR (e.g. after aligning on a design/spec):
 
 ### Release
 
-The three publishable packages (`@opendil/core`, `@opendil/runtime`, `@opendil/react`) move in lockstep — one version number for all of them, tagged `v<version>`. `@opendil/benchmarks` is private and never ships.
+The three publishable packages (`@kkkiio/dil-core`, `@kkkiio/dil-runtime`, `@kkkiio/dil-react`) move in lockstep — one version number for all of them, tagged `v<version>`. `@kkkiio/dil-benchmarks` is private and never ships.
 
 When asked to cut or release a new version:
 
