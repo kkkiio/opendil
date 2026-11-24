@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileDil, type DilHandler, parseDocument, type ResolvedNode } from "@opendil/core";
+import { compileDil, type DilHandler, parseDocument, type ResolvedNode, readDilViewState } from "@opendil/core";
 import { DirectRuntime } from "./direct-runtime.ts";
 
 const counter = [
@@ -8,15 +8,18 @@ const counter = [
   "<button onClick={() => setCount(count + 1)}>{count}</button>",
 ].join("\n");
 
-function engine() {
-  const trees: (readonly ResolvedNode[] | undefined)[] = [];
+function engine(viewState?: ReturnType<typeof readDilViewState>) {
+  const trees: { tree: readonly ResolvedNode[]; errors: number }[] = [];
   const intents: ReadonlySet<string>[] = [];
+  const viewStates: unknown[] = [];
   const runtime = new DirectRuntime(
-    (tree) => trees.push(tree),
+    (tree, errors) => trees.push({ tree, errors }),
     (sends) => intents.push(sends),
     () => null,
+    viewState,
+    (next) => viewStates.push(next),
   );
-  return { runtime, trees, intents };
+  return { runtime, trees, intents, viewStates };
 }
 
 function programOf(source: string) {
@@ -39,12 +42,23 @@ function find(nodes: readonly ResolvedNode[], name: string): ResolvedNode | unde
 
 test("evaluate resolves dynamic content synchronously", () => {
   const { runtime } = engine();
-  const tree = runtime.evaluate(programOf("{#each ['写代码', '跑测试'] as task}<text>{task}</text>{/each}"));
-  assert.ok(tree);
-  assert.equal(textOf(tree), "写代码跑测试");
+  const snapshot = runtime.evaluate(programOf("{#each ['写代码', '跑测试'] as task}<text>{task}</text>{/each}"));
+  assert.ok(snapshot);
+  assert.equal(textOf(snapshot.tree), "写代码跑测试");
 });
 
-test("evaluate caches the tree for the same program reference", () => {
+test("evaluate counts broken expressions and syntax in the error tally", () => {
+  const { runtime } = engine();
+  const runtimeOnly = runtime.evaluate(programOf("<text>{undefinedFunction()}</text>"));
+  assert.ok(runtimeOnly);
+  assert.equal(runtimeOnly.errors, 1); // the expression threw at render time
+  const syntax = runtime.evaluate(programOf("{@body const = broken}<text>still renders</text>"));
+  assert.ok(syntax);
+  assert.equal(syntax.errors, 1); // the statement fell back at assembly time
+  assert.equal(textOf(syntax.tree), "still renders");
+});
+
+test("evaluate caches the snapshot for the same program reference", () => {
   const { runtime } = engine();
   const program = programOf("<text>{1 + 1}</text>");
   assert.equal(runtime.evaluate(program), runtime.evaluate(program));
@@ -59,7 +73,7 @@ test("update emits the new tree and skips already-evaluated revisions", () => {
   assert.equal(trees.length, 1);
   runtime.update(programOf("{#each ['a', 'b'] as x}<text>{x}</text>{/each}"));
   assert.equal(trees.length, 2);
-  assert.equal(textOf(trees[1] ?? []), "ab");
+  assert.equal(textOf(trees[1]?.tree ?? []), "ab");
 });
 
 test("a program that throws yields undefined and keeps the previous tree", () => {
@@ -69,34 +83,46 @@ test("a program that throws yields undefined and keeps the previous tree", () =>
   assert.equal(trees.length, 1); // the failed revision never replaces the live one
 });
 
-test("invoke runs a handler and publishes the updated tree", () => {
-  const { runtime, trees } = engine();
+test("invoke runs a handler, publishes the updated tree, and reports the state change", async () => {
+  const { runtime, trees, viewStates } = engine();
   runtime.update(programOf(counter));
-  const button = find(trees[0] ?? [], "button");
+  const button = find(trees[0]?.tree ?? [], "button");
   assert.ok(button?.kind === "element");
   const handler = button.props.onClick as DilHandler;
   assert.ok(handler?.id);
-  void runtime.invoke(handler);
+  await runtime.invoke(handler);
   assert.equal(trees.length, 2);
-  assert.equal(textOf(trees[1] ?? []), "1");
+  assert.equal(textOf(trees[1]?.tree ?? []), "1");
+  assert.deepEqual(viewStates, [{ root: { count: 1 } }]);
 });
 
-test("state slots survive re-compiled revisions (streaming)", () => {
-  const { runtime, trees } = engine();
+test("state slots survive re-compiled revisions (streaming never reports view state)", () => {
+  const { runtime, trees, viewStates } = engine();
   runtime.update(programOf(counter));
-  const button = find(trees[0] ?? [], "button");
+  const button = find(trees[0]?.tree ?? [], "button");
   assert.ok(button?.kind === "element");
   void runtime.invoke(button.props.onClick as DilHandler);
-  // Stream the next revision of the same document: the count must persist.
+  // Stream the next revision of the same document: the count must persist, and a
+  // re-load that does not change state must not fire the view-state reporter.
   runtime.update(programOf([counter, "<text>tail</text>"].join("\n")));
-  assert.equal(textOf(trees.at(-1) ?? []), "1tail");
+  assert.equal(textOf(trees.at(-1)?.tree ?? []), "1tail");
+  assert.equal(viewStates.length, 1);
+});
+
+test("a seeded snapshot restores state before the first evaluation", () => {
+  const { runtime } = engine(readDilViewState({ root: { count: 7 } }));
+  runtime.update(programOf(counter));
+  const trees = runtime.evaluate(programOf(counter));
+  // Same reference as the update: cached snapshot, count restored from the seed.
+  assert.ok(trees);
+  assert.equal(textOf(trees.tree), "7");
 });
 
 test("GenUI buttons are flagged as send intents and dropped without a host", async () => {
   const { runtime, intents, trees } = engine();
   const source = "<button onClick={() => GenUI.issueNewTurn('继续')}>继续</button>";
   runtime.update(programOf(source));
-  const button = find(trees[0] ?? [], "button");
+  const button = find(trees[0]?.tree ?? [], "button");
   assert.ok(button?.kind === "element");
   const handler = button.props.onClick as DilHandler;
   assert.ok(handler?.id);

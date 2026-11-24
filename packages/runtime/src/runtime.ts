@@ -1,4 +1,4 @@
-import type { DilHandler, DilProgram, ResolvedNode } from "@opendil/core";
+import type { DilHandler, DilProgram, DilViewState, ResolvedNode } from "@opendil/core";
 import { readTree, readViewState } from "@opendil/core";
 import { SANDBOX_FRAME_HTML as frameHtml, SANDBOX_WORKER_SOURCE as workerSource } from "./sandbox-assets.gen.ts";
 import type { DilResult } from "./sandbox-worker.cjs";
@@ -34,7 +34,7 @@ export class DilSandbox {
   private attempted = 0;
   private desired: Revision | undefined;
   private committed: Revision | undefined;
-  private state: Record<string, unknown> = {};
+  private state: Record<string, unknown>;
   private events: EventRequest[] = [];
   private pending: { id: number; request: Request; event?: EventRequest } | undefined;
   private watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -44,10 +44,14 @@ export class DilSandbox {
   private sends = new Set<string>();
 
   constructor(
-    private readonly onTree: (tree: readonly ResolvedNode[]) => void,
+    private readonly onTree: (tree: readonly ResolvedNode[], errors: number) => void,
     private readonly onIntents: (sends: ReadonlySet<string>) => void,
     private readonly getHost: () => DilHost | null,
-  ) {}
+    viewState?: DilViewState,
+    private readonly onViewStateChange?: (viewState: DilViewState) => void,
+  ) {
+    this.state = readViewState(viewState?.root ?? {});
+  }
 
   update(program: DilProgram | undefined): void {
     if (program === this.desired?.program) return;
@@ -188,13 +192,18 @@ export class DilSandbox {
     const revision = request.kind === "load" ? request : this.committed;
     if (request.kind === "load") this.attempted = request.revision;
     let prompt: string | undefined;
+    let viewState: DilViewState | undefined;
     try {
       if (data.result && revision) {
         const tree = readTree(data.result.tree, revision.program.data);
-        this.state = readViewState(data.result.state);
+        const nextState = readViewState(data.result.state);
+        if (event && this.onViewStateChange && JSON.stringify(this.state) !== JSON.stringify(nextState)) {
+          viewState = { root: nextState };
+        }
+        this.state = nextState;
         this.committed = revision;
         this.loaded = revision.revision;
-        this.onTree(tree);
+        this.onTree(tree, data.result.errors);
         this.intent = pending.id;
         this.buttons = new Set(Array.isArray(data.result.buttons) ? data.result.buttons.slice(0, 5_000) : []);
         this.sends = new Set([...this.sends].filter((id) => this.buttons.has(id)));
@@ -216,6 +225,7 @@ export class DilSandbox {
       this.recover(request);
       return;
     }
+    if (viewState) this.onViewStateChange?.(viewState);
     if (event && prompt) {
       const host = this.getHost();
       if (!host || host.busy) {

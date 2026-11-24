@@ -67,6 +67,51 @@ export function readViewState(value: unknown): Record<string, unknown> {
   return readValue(value, { fields: MAX_DIL_NODES * 8, text: MAX_TEXT }) as Record<string, unknown>;
 }
 
+/** A persisted card snapshot: the DIL state slots under a `root` envelope. Hosts store this per message or per session and seed the engine with it on reload. */
+export interface DilViewState {
+  readonly root: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Read a bounded DIL snapshot from untrusted storage (a session log, localStorage, a
+ * request payload). The budget mirrors the worker's own limits so a crafted snapshot can
+ * never do more damage than a legitimate program could. Returns `undefined` for anything
+ * that is not shaped like a snapshot; the engines then start from empty state.
+ */
+export function readDilViewState(value: unknown): DilViewState | undefined {
+  if (!value || typeof value !== "object" || !("root" in value)) return undefined;
+  const root: unknown = value.root;
+  if (!root || typeof root !== "object" || Object.getPrototypeOf(root) !== Object.prototype) {
+    return undefined;
+  }
+  const pending: [unknown, number][] = [[root, 0]];
+  let fields = 40_000;
+  let text = 1_000_000;
+  for (let field = pending.pop(); field; field = pending.pop()) {
+    const [data, depth] = field;
+    if (--fields < 0 || depth > 16) return undefined;
+    if (typeof data === "string") text -= data.length;
+    else if (data === null || typeof data === "boolean" || (typeof data === "number" && Number.isFinite(data))) {
+      continue;
+    } else if (Array.isArray(data)) {
+      if (data.length > fields - pending.length) return undefined;
+      for (const item of data) pending.push([item, depth + 1]);
+    } else if (data && typeof data === "object" && Object.getPrototypeOf(data) === Object.prototype) {
+      const entries = Object.entries(data);
+      fields -= entries.length;
+      if (entries.length > fields - pending.length) return undefined;
+      for (const [key, item] of entries) {
+        text -= key.length;
+        pending.push([item, depth + 1]);
+      }
+    } else {
+      return undefined;
+    }
+    if (text < 0) return undefined;
+  }
+  return { root: root as Record<string, unknown> };
+}
+
 export function readTree(value: unknown, data: DilData): ResolvedNode[] {
   let remaining = MAX_DIL_NODES;
   const budget = { fields: MAX_DIL_NODES * 8, text: MAX_TEXT };
