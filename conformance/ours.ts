@@ -1,4 +1,11 @@
-import { compileDil, type DilHandler, parseDocument, type ResolvedNode, readTree } from "@opendil/core";
+import {
+  compileDil,
+  type DilHandler,
+  type DilViewState,
+  parseDocument,
+  type ResolvedNode,
+  readTree,
+} from "@opendil/core";
 import { createProgram } from "@opendil/runtime/worker";
 import type { ReferenceEffect } from "./reference.ts";
 
@@ -12,9 +19,9 @@ export interface OurProgram {
   click(tag: string): boolean;
 }
 
-export function createOurProgram(source: string): OurProgram {
+export function createOurProgram(source: string, viewState?: DilViewState): OurProgram {
   const performed: ReferenceEffect[] = [];
-  const runtime = createProgram();
+  const runtime = createProgram(viewState?.root);
   const { program } = compileDil(parseDocument(source, { isStreaming: false }));
   let result = runtime.load(program);
   let tree = readTree(result.tree, program.data);

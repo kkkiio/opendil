@@ -142,44 +142,66 @@ export const DIL_EXAMPLE_SVG = `In stateless serverless architectures, concurren
 
 If Players A and B pick up the same item at once, both workers can read \`owner = null\` unless the database serializes the write.`;
 
+export const DIL_EXAMPLE_CLARIFY = `{@body const options = ["Mark overwrites", "Show new files only", "Fail if a file exists"]}
+{@body const [choice, setChoice] = DIL.useState(0, { key: "overwrite" })}
+<box border radius="xl" padding={3} gap={2}>
+  <title>What should \`--dry-run\` report when a file already exists?</title>
+  <radio-group value={choice} onChange={setChoice}>
+    {#each options as option, i}
+      <radio value={i}>{option}{i === 0 ? " (Recommended)" : ""}</radio>
+    {/each}
+  </radio-group>
+  <box background="muted" radius="md" padding={2} gap={1}>
+    <caption>Example output</caption>
+    {#if choice === 2}
+      <text>\`error: reports/summary.csv already exists\`</text>
+    {:else}
+      {#if choice === 0}<text>\`reports/summary.csv  overwrite\`</text>{/if}
+      <text>\`reports/orders.json  new\`</text>
+    {/if}
+  </box>
+  <button onClick={() => GenUI.issueNewTurn(\`Dry-run behavior for existing export files: \${options[choice]}.\`)}>Submit choice</button>
+</box>`;
+
 export const DIL_PROMPT_EXAMPLES = {
   progress: DIL_EXAMPLE_PROGRESS,
   flow: DIL_EXAMPLE_FLOW,
   objects: DIL_EXAMPLE_OBJECTS,
   svg: DIL_EXAMPLE_SVG,
+  clarify: DIL_EXAMPLE_CLARIFY,
 } as const;
 
-export const DIL_SYSTEM_PROMPT = `You are encouraged to answer the user using DIL (Dynamic Interface Language), a Markdown superset for visual explanation.
-Fewer words, more vibe.
+export const DIL_SYSTEM_PROMPT = `You are encouraged to answer the user using DIL (Dynamic Interface Language), a Markdown superset for visual explanations.
+If a prose explanation would take several paragraphs, consider whether a DIL visual could convey the same information with less text.
 
-For example, if you want to show work progress:
+To show progress on a task:
 
 ${DIL_EXAMPLE_PROGRESS}
 
-If you want to show a flow diagram:
-
-${DIL_EXAMPLE_FLOW}
-
-If you want to illustrate objects with icons:
+To illustrate objects with icons:
 
 ${DIL_EXAMPLE_OBJECTS}
 
-If you want to draw custom graphics:
+To draw custom graphics:
 
 ${DIL_EXAMPLE_SVG}
 
-Do not use Markdown blocks (e.g. code fences, tables) inside DIL elements. Inline Markdown (e.g. **bold**, \`code\`) is allowed.
+When an unresolved decision would materially change the implementation, first ask the user to clarify it. Use a DIL card when choices or concrete previews help the user decide. Put the question in your final response and end the turn before making changes that depend on the answer. Continue when the user replies in chat or submits the card with GenUI.issueNewTurn(text), which sends a new user message.
 
-Reference — tags and values the UI renders:
+For example, to let the user preview options and submit a choice:
+
+${DIL_EXAMPLE_CLARIFY}
+
+Inside DIL elements, use inline Markdown for formatting and <CodeBlock language="javascript">...</CodeBlock> for multiline code. Keep Markdown tables and other block syntax outside DIL elements.
+
+Reference — tags and values the Web UI renders:
 
 - Layout: <box> (group or card), <row>, <col>, <grid columns={n}>, <grid-item>, <divider/>
 - Text: <title>, <text>, <caption>, <badge>
 - Icons: <icon name="arrow-down" size="sm"/> — Lucide names such as arrow-down, circle-check, file-text
-- Diagram: <svg viewBox="0 0 300 130" width="100%">…</svg> holding <rect x y width height rx fill fillOpacity stroke strokeWidth/>, <path d fill stroke strokeWidth markerEnd/>, <line x1 y1 x2 y2 stroke strokeWidth/>, <circle cx cy r/>, <g>.
-  Declare markers in <defs><marker id="a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">…</marker></defs> and point to them with markerEnd="url(#a)".
-  Inside <svg>, <text x y fontSize fontWeight textAnchor fill="currentColor"> is SVG text.
+- Diagram: <svg>. Use standard SVG attributes in React syntax and local url(#id) references.
 - Control flow: {#each list as item, i}…{/each}, {#if cond}…{:else}…{/if}, {expr}
-- Expressions: literals, arithmetic and comparison, ternary, template strings, member/index access with optional chaining, .map/.filter/.slice/.join/.includes/.toFixed/.toLocaleString, and Math, Number, String, and Array methods.
+- Expressions: JavaScript expressions.
 
 Attributes:
 

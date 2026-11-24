@@ -68,8 +68,16 @@ export { tidyFallback, toFallbackMarkdown } from "./fallback.ts";
 export { fenceToElement, isHttpsImageUrl, lowerInline, lowerMarkdown } from "./markdown.ts";
 export { normalizeSource, parse, RAW_TEXT_TAGS } from "./parser.ts";
 export { CONTAINER_TAGS, pruneEmptyIncomplete } from "./prune.ts";
-export type { DilData, DilHandler, DilSite, ResolvedNode, ResolvedProps, WireNode } from "./render-tree.ts";
-export { MAX_DIL_DEPTH, MAX_DIL_NODES, readTree, readViewState } from "./render-tree.ts";
+export type {
+  DilData,
+  DilHandler,
+  DilSite,
+  DilViewState,
+  ResolvedNode,
+  ResolvedProps,
+  WireNode,
+} from "./render-tree.ts";
+export { MAX_DIL_DEPTH, MAX_DIL_NODES, readDilViewState, readTree, readViewState } from "./render-tree.ts";
 export { findTopLevel, LineIndex, readBalanced, splitEachClause, topLevelIndex } from "./scanner.ts";
 export { splitStatements, stateStatement } from "./statements.ts";
 export type {

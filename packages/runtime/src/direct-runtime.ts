@@ -1,7 +1,13 @@
-import type { DilHandler, DilProgram, ResolvedNode } from "@opendil/core";
+import type { DilHandler, DilProgram, DilViewState, ResolvedNode } from "@opendil/core";
 import { readTree, readViewState } from "@opendil/core";
 import type { DilHost } from "./runtime.ts";
 import { createProgram } from "./sandbox-worker.cjs";
+
+/** What a synchronous evaluation produced: the resolved tree plus its error tally. */
+export interface DirectSnapshot {
+  readonly tree: readonly ResolvedNode[];
+  readonly errors: number;
+}
 
 /**
  * Synchronous, in-context executor for trusted DIL programs.
@@ -13,46 +19,55 @@ import { createProgram } from "./sandbox-worker.cjs";
  * synchronous call, so a server-side renderer can bake the resolved tree straight into
  * its HTML output.
  *
- * The four public methods mirror `DilSandbox`, so a renderer can swap the two without
- * touching any other code. What is deliberately absent: the watchdog and process
- * isolation. A program that loops forever will hang the thread that runs it, and a
- * program that misbehaves can affect its host — acceptable only for authored content.
+ * The public methods mirror `DilSandbox` — including the view-state seed and the
+ * interaction-driven change report — so a renderer can swap the two without touching any
+ * other code. What is deliberately absent: the watchdog and process isolation. A program
+ * that loops forever will hang the thread that runs it, and a program that misbehaves can
+ * affect its host — acceptable only for authored content.
  */
 export class DirectRuntime {
-  private impl = createProgram();
+  private impl: ReturnType<typeof createProgram>;
   private program?: DilProgram;
-  private tree?: readonly ResolvedNode[];
+  private snapshot?: DirectSnapshot;
+  private state: Record<string, unknown>;
 
   // Node's strip-only loader runs the worker engine directly in tests, so no TypeScript
   // parameter properties here (they need the transform mode, not the strip mode).
-  private readonly onTree: (tree: readonly ResolvedNode[]) => void;
+  private readonly onTree: (tree: readonly ResolvedNode[], errors: number) => void;
   private readonly onIntents: (sends: ReadonlySet<string>) => void;
   private readonly getHost: () => DilHost | null;
+  private readonly onViewStateChange?: (viewState: DilViewState) => void;
 
   constructor(
-    onTree: (tree: readonly ResolvedNode[]) => void,
+    onTree: (tree: readonly ResolvedNode[], errors: number) => void,
     onIntents: (sends: ReadonlySet<string>) => void,
     getHost: () => DilHost | null,
+    viewState?: DilViewState,
+    onViewStateChange?: (viewState: DilViewState) => void,
   ) {
     this.onTree = onTree;
     this.onIntents = onIntents;
     this.getHost = getHost;
+    this.onViewStateChange = onViewStateChange;
+    this.state = readViewState(viewState?.root ?? {});
+    this.impl = createProgram(this.state);
   }
 
   /**
-   * Run the program once, synchronously, and return the resolved tree. `undefined` means
-   * this revision could not run (the caller renders its fallback); the previous tree, if
+   * Run the program once, synchronously, and return the snapshot. `undefined` means this
+   * revision could not run (the caller renders its fallback); the previous snapshot, if
    * any, stays in place until a later revision succeeds. Re-evaluating the same program
-   * reference returns the cached tree without touching the runner.
+   * reference returns the cached result without touching the runner.
    */
-  evaluate(program: DilProgram): readonly ResolvedNode[] | undefined {
-    if (program === this.program) return this.tree;
+  evaluate(program: DilProgram): DirectSnapshot | undefined {
+    if (program === this.program) return this.snapshot;
     try {
       const result = this.impl.load(program);
       this.program = program;
-      this.tree = readTree(result.tree, program.data);
+      this.snapshot = { tree: readTree(result.tree, program.data), errors: result.errors };
+      this.state = readViewState(result.state);
       this.probeIntents(program, result.state, result.buttons);
-      return this.tree;
+      return this.snapshot;
     } catch {
       return undefined;
     }
@@ -60,8 +75,8 @@ export class DirectRuntime {
 
   update(program: DilProgram | undefined): void {
     if (!program || program === this.program) return;
-    const tree = this.evaluate(program);
-    if (tree !== undefined) this.onTree(tree);
+    const snapshot = this.evaluate(program);
+    if (snapshot !== undefined) this.onTree(snapshot.tree, snapshot.errors);
   }
 
   invoke(handler: DilHandler, args: unknown[] = [], onSend?: () => void): Promise<void> {
@@ -69,8 +84,17 @@ export class DirectRuntime {
     if (!program) return Promise.resolve();
     const result = this.impl.trigger(handler.id, args);
     if (!result) return Promise.resolve();
-    this.tree = readTree(result.tree, program.data);
-    this.onTree(this.tree);
+    this.snapshot = { tree: readTree(result.tree, program.data), errors: result.errors };
+    const nextState = readViewState(result.state);
+    // Only user interactions report state changes — streaming re-loads never do, so a
+    // host persisting snapshots is not rewritten on every token.
+    if (this.onViewStateChange && JSON.stringify(this.state) !== JSON.stringify(nextState)) {
+      this.state = nextState;
+      this.onViewStateChange({ root: nextState });
+    } else {
+      this.state = nextState;
+    }
+    this.onTree(this.snapshot.tree, this.snapshot.errors);
     this.probeIntents(program, result.state, result.buttons);
     // An effect (GenUI.issueNewTurn) without a live host is silently dropped: a static
     // blog has no conversation to continue, and a busy host could not accept it anyway.

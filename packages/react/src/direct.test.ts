@@ -40,3 +40,17 @@ test("sandbox mode defers resolution to the client", () => {
   const html = renderToString(createElement(DilRenderer, { source: "正文", execution: "sandbox" }));
   assert.ok(html.includes("whitespace-pre-wrap"));
 });
+
+test("the error tally lands on the root as data-dil-errors", () => {
+  const html = renderToString(createElement(DilRenderer, { source: "<text>{boom()}</text>", execution: "direct" }));
+  assert.match(html, /data-dil-errors="1"/);
+});
+
+test("a seeded view state restores the card before its first render", () => {
+  const source = ["{@body const [count, setCount] = DIL.useState(0)}", "<text>{count}</text>"].join("\n");
+  const html = renderToString(
+    createElement(DilRenderer, { source, execution: "direct", viewState: { root: { count: 7 } } }),
+  );
+  assert.match(html, /7/);
+  assert.ok(!html.includes("whitespace-pre-wrap"));
+});
