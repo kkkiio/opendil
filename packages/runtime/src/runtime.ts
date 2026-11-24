@@ -1,5 +1,5 @@
-import type { DilHandler, DilProgram, DilViewState, ResolvedNode } from "@opendil/core";
-import { readTree, readViewState } from "@opendil/core";
+import type { DilHandler, DilProgram, DilViewState, ResolvedNode } from "@kkkiio/dil-core";
+import { readTree, readViewState } from "@kkkiio/dil-core";
 import { SANDBOX_FRAME_HTML as frameHtml, SANDBOX_WORKER_SOURCE as workerSource } from "./sandbox-assets.gen.ts";
 import type { DilResult } from "./sandbox-worker.cjs";
 

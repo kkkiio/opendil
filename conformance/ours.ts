@@ -5,8 +5,8 @@ import {
   parseDocument,
   type ResolvedNode,
   readTree,
-} from "@opendil/core";
-import { createProgram } from "@opendil/runtime/worker";
+} from "@kkkiio/dil-core";
+import { createProgram } from "@kkkiio/dil-runtime/worker";
 import type { ReferenceEffect } from "./reference.ts";
 
 export interface OurProgram {

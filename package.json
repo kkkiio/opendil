@@ -15,7 +15,7 @@
     "test": "pnpm -r test && pnpm test:conformance",
     "test:conformance": "node --test \"conformance/*.test.ts\"",
     "test:update": "UPDATE_SNAPSHOTS=1 pnpm -r test",
-    "bench": "pnpm --filter @opendil/benchmarks run bench",
+    "bench": "pnpm --filter @kkkiio/dil-benchmarks run bench",
     "check": "biome check .",
     "check:write": "biome check --write .",
     "format": "biome format --write .",
@@ -23,8 +23,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
-    "@opendil/core": "workspace:*",
-    "@opendil/runtime": "workspace:*",
+    "@kkkiio/dil-core": "workspace:*",
+    "@kkkiio/dil-runtime": "workspace:*",
     "@types/node": "^25.9.1",
     "fast-check": "^4.10.3",
     "typescript": "^6.0.3"

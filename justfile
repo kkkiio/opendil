@@ -34,7 +34,7 @@ typecheck:
 conformance:
     pnpm test:conformance
 
-# Regenerate golden parser snapshots in @opendil/core.
+# Regenerate golden parser snapshots in @kkkiio/dil-core.
 snapshot:
     pnpm test:update
 

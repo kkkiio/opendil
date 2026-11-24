@@ -24,5 +24,5 @@ Every example uses the standard `.dil.md` extension (Markdown + DIL mixed) and i
 When adding a new `.dil.md` example:
 1. Place it under the most relevant category folder (`basics/`, `flow/`, `metrics/`, `svg/`, `interactive/`).
 2. Keep it self-contained, realistic, and free of private/identifying data.
-3. Verify it parses cleanly with `@opendil/core` (`parseDocument(source, { isStreaming: false }).diagnostics.length === 0`).
+3. Verify it parses cleanly with `@kkkiio/dil-core` (`parseDocument(source, { isStreaming: false }).diagnostics.length === 0`).
 4. Add a row to the table above.

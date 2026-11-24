@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 // Fixed seeds: a failing property reproduces exactly, and CI does not flip on a random
 // draw. Bump the seed deliberately to explore a new slice of the input space.
-import { compileDil, type DilNode, hasDilElements, parseDocument, readTree } from "@opendil/core";
+import { compileDil, type DilNode, hasDilElements, parseDocument, readTree } from "@kkkiio/dil-core";
 import fc from "fast-check";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";

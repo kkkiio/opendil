@@ -1,4 +1,4 @@
-import type { DilHandler, ResolvedProps } from "@opendil/core";
+import type { DilHandler, ResolvedProps } from "@kkkiio/dil-core";
 import { createContext, type ReactNode, useContext, useId, useRef, useState } from "react";
 import { type DilButtonComponentProps, useDilComponents } from "../components-context.ts";
 import { useDilRuntime } from "../runtime-context.ts";

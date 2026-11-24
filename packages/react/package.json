@@ -1,5 +1,5 @@
 {
-  "name": "@opendil/react",
+  "name": "@kkkiio/dil-react",
   "version": "0.1.0",
   "description": "React renderer and default primitive catalog for DIL (Dynamic Interface Language)",
   "license": "MIT",
@@ -20,11 +20,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm -F @opendil/core build && pnpm -F @opendil/runtime build && pnpm build && node --test \"src/*.test.ts\""
+    "test": "pnpm -F @kkkiio/dil-core build && pnpm -F @kkkiio/dil-runtime build && pnpm build && node --test \"src/*.test.ts\""
   },
   "dependencies": {
-    "@opendil/core": "workspace:*",
-    "@opendil/runtime": "workspace:*",
+    "@kkkiio/dil-core": "workspace:*",
+    "@kkkiio/dil-runtime": "workspace:*",
     "clsx": "^2.1.1",
     "katex": "^0.16.47",
     "lucide-react": "^1.16.0",

@@ -1,7 +1,7 @@
 /**
  * Deterministic scoring for DIL benchmarks.
  *
- * Uses `@opendil/core` (`parseDocument`, `compileDil`) and `@opendil/runtime/worker`
+ * Uses `@kkkiio/dil-core` (`parseDocument`, `compileDil`) and `@kkkiio/dil-runtime/worker`
  * (`createProgram`) so a case passes only when the emitted DIL genuinely parses,
  * compiles, and executes without runtime errors.
  */
@@ -13,8 +13,8 @@ import {
   type DilDocument,
   type DilNode,
   parseDocument,
-} from "@opendil/core";
-import { createProgram } from "@opendil/runtime/worker";
+} from "@kkkiio/dil-core";
+import { createProgram } from "@kkkiio/dil-runtime/worker";
 import type { BenchmarkTrack } from "./runners/types.ts";
 
 export interface CaseCheck {
@@ -289,7 +289,7 @@ export function cleanDiagnostics(label: string): CaseCheck {
   };
 }
 
-/** Verifies `compileDil` succeeds and the program loads cleanly in `@opendil/runtime/worker`. */
+/** Verifies `compileDil` succeeds and the program loads cleanly in `@kkkiio/dil-runtime/worker`. */
 export function compilesAndRuns(label: string): CaseCheck {
   return {
     id: "compile-and-run",

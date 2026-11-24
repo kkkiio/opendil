@@ -1,6 +1,6 @@
-import type { DilViewState } from "@opendil/core";
-import { compileDil, isInlineTag, parseDocument, type ResolvedNode, type ResolvedProps } from "@opendil/core";
-import { DilSandbox, DirectRuntime, type DirectSnapshot } from "@opendil/runtime";
+import type { DilViewState } from "@kkkiio/dil-core";
+import { compileDil, isInlineTag, parseDocument, type ResolvedNode, type ResolvedProps } from "@kkkiio/dil-core";
+import { DilSandbox, DirectRuntime, type DirectSnapshot } from "@kkkiio/dil-runtime";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { type DilComponents, DilComponentsContext, type DilRenderFallback } from "./components-context.ts";
 import {

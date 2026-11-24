@@ -11,10 +11,10 @@ importers:
       '@biomejs/biome':
         specifier: 2.4.15
         version: 2.4.15
-      '@opendil/core':
+      '@kkkiio/dil-core':
         specifier: workspace:*
         version: link:packages/core
-      '@opendil/runtime':
+      '@kkkiio/dil-runtime':
         specifier: workspace:*
         version: link:packages/runtime
       '@types/node':
@@ -35,10 +35,10 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: ^1.5.2
         version: 1.6.0(@aws-sdk/credential-provider-node@3.972.98)(@smithy/signature-v4@5.7.5)(google-auth-library@10.9.1)(ws@8.23.0)
-      '@opendil/core':
+      '@kkkiio/dil-core':
         specifier: workspace:*
         version: link:../packages/core
-      '@opendil/runtime':
+      '@kkkiio/dil-runtime':
         specifier: workspace:*
         version: link:../packages/runtime
 
@@ -72,10 +72,10 @@ importers:
 
   packages/react:
     dependencies:
-      '@opendil/core':
+      '@kkkiio/dil-core':
         specifier: workspace:*
         version: link:../core
-      '@opendil/runtime':
+      '@kkkiio/dil-runtime':
         specifier: workspace:*
         version: link:../runtime
       clsx:
@@ -109,7 +109,7 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@opendil/core':
+      '@kkkiio/dil-core':
         specifier: workspace:*
         version: link:../core
     devDependencies:

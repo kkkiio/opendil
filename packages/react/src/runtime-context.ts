@@ -1,5 +1,5 @@
-import type { DilHandler, DilProgram } from "@opendil/core";
-import type { DilHost, DilSandbox, DirectRuntime } from "@opendil/runtime";
+import type { DilHandler, DilProgram } from "@kkkiio/dil-core";
+import type { DilHost, DilSandbox, DirectRuntime } from "@kkkiio/dil-runtime";
 import { createContext, useContext } from "react";
 
 /** The surface a renderer's controls need, satisfied by both DilSandbox and DirectRuntime. */

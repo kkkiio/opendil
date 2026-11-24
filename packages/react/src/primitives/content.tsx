@@ -12,7 +12,7 @@
  * primitives, so they are `memo`ised on their content rather than re-rendered per token.
  */
 
-import { isHttpsImageUrl } from "@opendil/core";
+import { isHttpsImageUrl } from "@kkkiio/dil-core";
 import { Check, Copy } from "lucide-react";
 import { memo, type ReactNode, useMemo, useState } from "react";
 import { useDilComponents } from "../components-context.ts";
