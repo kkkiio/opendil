@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  # npm Trusted Publishing: the exchange needs the workflow's OIDC identity.
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -75,4 +77,3 @@ jobs:
           done
         env:
           NPM_CONFIG_PROVENANCE: "true"
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

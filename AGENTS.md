@@ -57,4 +57,6 @@ When asked to cut or release a new version:
 1. **Bump and verify**: set the same `version` in all three `packages/*/package.json`, then run `pnpm build && pnpm typecheck && pnpm test && pnpm check` locally — all green before anything is tagged.
 2. **Commit and tag**: commit as `chore(release): bump to v<version>` and tag `v<version>`.
 3. **Prepare a draft release, then stop**: create a GitHub Release **draft** with `gh release create v<version> --draft --title "v<version>"` and release notes covering the notable changes since the last release. Do **not** publish it — stop and share the draft URL with the maintainer.
-4. **The maintainer clicks Publish**: [`release.yml`](.github/workflows/release.yml) then verifies the tag against every manifest, runs the full verification suite, and publishes each package to npm (skipping any version already published, so retries are safe).
+4. **The maintainer clicks Publish**: [`release.yml`](.github/workflows/release.yml) then verifies the tag against every manifest, runs the full verification suite, and publishes each package to npm via Trusted Publishing (skipping any version already published, so retries are safe).
+
+Note: the **first release of each package is published by the maintainer locally** (npm login, then `pnpm -r publish --access public` from the repo root) — a package must exist on npm before its Trusted Publishing configuration can take effect. The maintainer configures the npmjs.org side per package.
