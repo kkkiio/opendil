@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { stringify } from "yaml";
 import { parseDocument, toFallbackMarkdown } from "./index.ts";
 import type { DilAttribute, DilDiagnostic, DilDocument, DilNode } from "./types.ts";
 
@@ -11,10 +12,11 @@ import type { DilAttribute, DilDiagnostic, DilDocument, DilNode } from "./types.
  *
  * For every `__fixtures__/*.dil.md` we commit what the pipeline produced:
  *
- *   __snapshots__/<name>.tree.json      lowered render tree + state + diagnostics
+ *   __snapshots__/<name>.tree.yaml      lowered render tree + state + diagnostics
  *   __snapshots__/<name>.fallback.md    the Markdown projection (readable as prose)
  *
- * The tree is written as a compact projection, not raw JSON of the AST:
+ * The tree is written as a compact projection (not raw JSON of the AST), rendered to
+ * YAML by the `yaml` package with wrapping disabled — one node per line, deterministic:
  *
  *   "文字"                              a text run
  *   { "tag": "title", "attrs": { "size": "lg" }, "children": ["标题"] }
@@ -25,7 +27,7 @@ import type { DilAttribute, DilDiagnostic, DilDocument, DilNode } from "./types.
  * Offsets (`pos` / `end`) and internal flags (`synthetic`) are omitted — noise for
  * review; the tests below assert offset invariants separately.
  *
- *   npm run test:dil:update             regenerate after an intentional change
+ *   pnpm test:update                    regenerate after an intentional change
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -41,7 +43,7 @@ for (const file of readdirSync(fixtureDir)
   test(`pipeline snapshot: ${file}`, () => {
     const document = parseDocument(readFileSync(join(fixtureDir, file), "utf8"));
 
-    compare(`${base}.tree.json`, `${renderJson(snapshotOf(document))}\n`);
+    compare(`${base}.tree.yaml`, `${stringify(snapshotOf(document), { indent: 2, lineWidth: 0 })}\n`);
     compare(`${base}.fallback.md`, `${toFallbackMarkdown(document.tree)}\n`);
   });
 
@@ -58,41 +60,6 @@ function snapshotOf(document: DilDocument): unknown {
     diagnostics: document.diagnostics.map(diagnosticSnapshot),
     tree: snapshotTree(document.tree),
   };
-}
-
-/**
- * JSON with a line budget: a subtree that fits one line stays on one line, so a table
- * row reads as one row instead of fourteen. The result is still valid JSON.
- */
-const MAX_INLINE = 100;
-
-function renderJson(value: unknown, indent = 0, column = indent): string {
-  const flat = compactJson(value);
-  if (column + flat.length <= MAX_INLINE) return flat;
-
-  const inner = " ".repeat(indent + 2);
-  const outer = " ".repeat(indent);
-  if (Array.isArray(value)) {
-    const items = value.map((item) => inner + renderJson(item, indent + 2, indent + 2));
-    return `[\n${items.join(",\n")}\n${outer}]`;
-  }
-  if (value && typeof value === "object") {
-    const items = Object.entries(value as Record<string, unknown>).map(([key, child]) => {
-      const prefix = `${inner}${JSON.stringify(key)}: `;
-      return prefix + renderJson(child, indent + 2, prefix.length);
-    });
-    return `{\n${items.join(",\n")}\n${outer}}`;
-  }
-  return flat;
-}
-
-function compactJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(compactJson).join(", ")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    return `{${entries.map(([key, child]) => `${JSON.stringify(key)}: ${compactJson(child)}`).join(", ")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function snapshotTree(nodes: readonly DilNode[]): unknown[] {

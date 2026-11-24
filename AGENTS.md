@@ -1,18 +1,48 @@
-# AGENTS.md
+# OpenDIL AGENTS.md
 
 Developer guide for coding agents working in the **OpenDIL** monorepo.
 
-## Repository Structure
+## Project Structure Guide
 
-- `packages/core` (`@opendil/core`): Pure TypeScript unified Markdown + DIL parser, stream repair, compiler (`compileDil`), render-tree wire protocol (`render-tree.ts`), and system prompt (`prompt.ts`). Must stay free of React and browser DOM dependencies.
-- `packages/runtime` (`@opendil/runtime`): Framework-agnostic browser sandbox (`DilSandbox`, `sandbox-frame.html`, `sandbox-worker.cjs`). `scripts/gen-assets.mjs` inlines the HTML and worker script into `src/sandbox-assets.gen.ts` so downstream bundlers do not need `?raw` loaders.
-- `packages/react` (`@opendil/react`): React renderer (`DilRenderer`), design-token mapping (`tokens.ts`), SVG allowlist (`svg-map.ts`), KaTeX helper (`math.ts`), and default primitives (`primitives/*`) with host overrides via `DilComponents` (`components-context.ts`).
-- `spec/`: Formal DIL specification (`dil.ebnf` and design/empirical reports).
-- `examples/`: Curated `.dil.md` corpus organized by pattern.
-- `conformance/`: Executable oracle tests comparing `@opendil/core` + `@opendil/runtime/worker` against captured reference artifacts.
-- `benchmarks/`: Evaluation workspace (`@opendil/benchmarks`, excluded from npm publishing via `"private": true`) for LLMs across Coding Agent (Pi + Docker sandbox) and Direct Chat tracks with selectable prompt profiles (`full` / `light`). Cases carry no answer keys: `scoring.test.ts` exercises the check machinery on synthetic snippets only.
+### Repo Structure & Important Files
 
-## Commands
+```text
+opendil/
+├── packages/
+│   ├── core/                      # @opendil/core — parse, stream repair, compileDil,
+│   │                              #   render-tree protocol, system prompt. No React/DOM.
+│   ├── runtime/
+│   │   └── src/sandbox-worker.cjs # classic Web Worker script AND Node-importable CJS
+│   │                              #   (typeof-exports guard). Do not convert to ESM.
+│   └── react/                     # @opendil/react — DilRenderer (execution
+│                                  #   "sandbox" | "direct"), tokens, svg-map, KaTeX,
+│                                  #   host overrides via DilComponents.
+├── spec/                          # formal specification: dil.ebnf + design/empirical reports
+├── examples/                      # curated .dil.md corpus, organized by pattern
+├── conformance/                   # executable oracle: ours vs captured reference artifacts
+└── benchmarks/                    # @opendil/benchmarks — npm-private ("private": true),
+                                   #   never ships answer keys
+```
+
+## Domain Language
+
+- **DIL** — Dynamic Interface Language: a Markdown superset with JSX-like tags, `{#if}/{#each}` control flow, and `{@body}` JS statements.
+- **program** — the output of `compileDil`: script parts plus a constant table. Every document compiles to one, static and dynamic alike.
+- **fallback** — the degraded Markdown projection rendered while a program cannot run (streaming tail, syntax errors, sandbox boot).
+- **resolved tree** — the pure-data node tree (`ResolvedNode`) an engine hands the renderer; identical across execution modes.
+- **DilSandbox** — the engine that runs a program in a hidden iframe + worker, for untrusted model output.
+- **DirectRuntime** — the engine that runs a program synchronously in the current context (browser or build machine), for trusted authored DIL.
+- **view state** — the persisted `{ root }` envelope of DIL.useState slots; seeds an engine, reported on user interactions (`readDilViewState`).
+- **conformance oracle** — captured reference artifacts (`*.raw.js` + `*.data.json`) that our implementation must reproduce exactly.
+- **snapshot** — golden files under `packages/core/src/__snapshots__/` (`<name>.tree.yaml` + `<name>.fallback.md`), regenerated with `pnpm test:update`.
+
+## Policies & Mandatory Rules
+
+*None yet. Add trigger-based hard rules here as they arise.*
+
+## Operation Guide
+
+### Commands
 
 ```bash
 pnpm install             # Install workspace dependencies
@@ -24,14 +54,6 @@ pnpm test:update         # Regenerate golden parser snapshots in packages/core
 pnpm check               # Biome lint + format check
 pnpm check:write         # Biome lint + format auto-fix
 ```
-
-## Conventions
-
-- **Imports**: Packages use ESM with `"type": "module"` and TypeScript `rewriteRelativeImportExtensions: true`, so relative imports use `.ts`/`.tsx` extensions (allowing `node --test` to run `.ts` tests directly without a transpile step).
-- **Worker module**: `packages/runtime/src/sandbox-worker.cjs` stays `.cjs` so it runs both as a classic Web Worker script (inlined via `sandbox-assets.gen.ts`) and as a Node-importable module (`@opendil/runtime/worker`).
-- **Testing**: Keep tests fast and dependency-light using `node --test`. When modifying parser/compiler semantics, run `pnpm test:conformance` to verify zero regressions against the reference oracle.
-
-## Operation Guide
 
 ### PR Workflow
 
@@ -58,5 +80,3 @@ When asked to cut or release a new version:
 2. **Commit and tag**: commit as `chore(release): bump to v<version>` and tag `v<version>`.
 3. **Prepare a draft release, then stop**: create a GitHub Release **draft** with `gh release create v<version> --draft --title "v<version>"` and release notes covering the notable changes since the last release. Do **not** publish it — stop and share the draft URL with the maintainer.
 4. **The maintainer clicks Publish**: [`release.yml`](.github/workflows/release.yml) then verifies the tag against every manifest, runs the full verification suite, and publishes each package to npm via Trusted Publishing (skipping any version already published, so retries are safe).
-
-Note: the **first release of each package is published by the maintainer locally** (npm login, then `pnpm -r publish --access public` from the repo root) — a package must exist on npm before its Trusted Publishing configuration can take effect. The maintainer configures the npmjs.org side per package.
