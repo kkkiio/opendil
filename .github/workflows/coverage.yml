@@ -78,7 +78,7 @@ jobs:
             echo '### Coverage'
             echo ''
             echo '```'
-            grep -E '^ℹ (all files|packages/)' coverage/report.txt || true
+            grep -E '^ℹ (all files| (core|runtime|react)|  (src|dist)) *\|' coverage/report.txt || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
