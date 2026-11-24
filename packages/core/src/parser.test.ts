@@ -388,3 +388,20 @@ test("diagnostics carry 1-based line and column", () => {
     ],
   );
 });
+
+test("an unimplemented component is diagnosed, not silently folded", () => {
+  const doc = parseDocument("<slider value={x}>x</slider>", { isStreaming: false });
+  assert.equal(doc.diagnosticSummary, "unknown_tag×1");
+  assert.equal(doc.diagnostics[0]?.code, "unknown_tag");
+  assert.equal(doc.diagnostics[0]?.tag, "slider");
+  assert.equal(doc.diagnostics[0]?.action, "fallback");
+  // The design keeps the prose behavior: no element reaches the tree.
+  assert.ok(doc.tree.every((node) => node.type !== "element" || node.name !== "checkbox"));
+});
+
+test("prose HTML without DIL markers stays clean", () => {
+  for (const source of ["普通 <div> 标签", "a < b", "<br/>", '<widget color="red">x</widget>']) {
+    const doc = parseDocument(source, { isStreaming: false });
+    assert.equal(doc.diagnostics.length, 0, `noise on: ${source}`);
+  }
+});

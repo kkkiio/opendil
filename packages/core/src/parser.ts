@@ -135,6 +135,7 @@ function parseNodes(ctx: ParseContext, closeTag: string | null, inBlock: boolean
     const next = src[ctx.i + 1];
     const markdown = ctx.markdown.get(ctx.i);
     if (markdown && (markdown.node.type !== "html" || !tagAt(src, ctx.i, next === "/"))) {
+      if (markdown.node.type === "html") diagnoseUnknownTag(ctx);
       const atom =
         markdown.node.type === "html"
           ? null
@@ -266,6 +267,9 @@ function parseNodes(ctx: ParseContext, closeTag: string | null, inBlock: boolean
 
     // 8. DIL elements. A `<` that cannot start a tag (`a < b`, `<https://…>`) is prose.
     const tag = !quoted && c === "<" && !isEscaped(src, ctx.i) ? tagAt(src, ctx.i) : null;
+    // A vocabulary-unknown tag that still carries DIL markers (an expression attribute) is
+    // an unimplemented component, not prose HTML — say so, then keep the prose behavior.
+    if (!tag && !quoted && c === "<" && !isEscaped(src, ctx.i)) diagnoseUnknownTag(ctx);
     if (tag) {
       flush(ctx.i);
       const element = readElement(ctx, tag);
@@ -302,6 +306,23 @@ function pushText(nodes: DilNode[], value: string, pos: number): void {
     return;
   }
   nodes.push({ type: "text", value, pos });
+}
+
+/**
+ * `unknown_tag`: the parser folds vocabulary-unknown tags into prose by design, but a
+ * tag carrying an expression attribute (`<checkbox key={…}>`) is clearly meant as a
+ * component — folding it silently cost hours of debugging once. Prose HTML without the
+ * marker (`<div>`, `<br/>`, autolinks) stays quiet.
+ */
+function diagnoseUnknownTag(ctx: ParseContext): void {
+  const { src } = ctx;
+  const name = matchAt(TAG_NAME, src, ctx.i + 1);
+  if (!name) return;
+  const after = ctx.i + 1 + name.length;
+  if (!/[\s/>]/.test(src[after] ?? "")) return; // `<boxy` is prose, not a tag
+  const gt = src.indexOf(">", after);
+  if (gt < 0 || !src.slice(after, gt).includes("={")) return;
+  ctx.diag.add("unknown_tag", ctx.i, { tag: name, action: "fallback" });
 }
 
 function tagAt(src: string, index: number, closing = false): string | null {
