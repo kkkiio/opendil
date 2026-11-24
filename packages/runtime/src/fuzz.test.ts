@@ -163,9 +163,7 @@ test("property: inline DIL neighbours keep their separators", () => {
       const expected = atoms.map((atom) => atom.text).join(" ");
       // Resolve first: `{1 + 1}` is an `expr` node until it is evaluated.
       const compiled = compileDil(parseDocument(source));
-      const resolved = compiled.program
-        ? readTree(createProgram().load(compiled.program).tree, compiled.program.data)
-        : compiled.tree;
+      const resolved = readTree(createProgram().load(compiled.program).tree, compiled.program.data);
       const actual = squash(
         resolved.map((node) => (node.kind === "text" ? node.value : "")).join("") +
           resolved.map((node) => (node.kind === "element" ? flatten(node.children) : "")).join(""),

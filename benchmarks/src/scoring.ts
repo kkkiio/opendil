@@ -289,16 +289,20 @@ export function cleanDiagnostics(label: string): CaseCheck {
   };
 }
 
-/** Verifies `compileDil` succeeds and, for dynamic cards, loads cleanly in `@opendil/runtime/worker`. */
+/** Verifies `compileDil` succeeds and the program loads cleanly in `@opendil/runtime/worker`. */
 export function compilesAndRuns(label: string): CaseCheck {
   return {
     id: "compile-and-run",
     label,
     test: (context) => {
-      const compiled = compileDil(context.parse);
-      if (!compiled.program) return compiled.tree.length > 0;
+      const { program } = compileDil(context.parse);
       const runner = createProgram();
-      const result = runner.load(compiled.program);
+      let result: ReturnType<typeof runner.load>;
+      try {
+        result = runner.load(program);
+      } catch {
+        return false;
+      }
       return Array.isArray(result.tree) && result.tree.length > 0;
     },
   };

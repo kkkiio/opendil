@@ -1,5 +1,5 @@
 import { compileDil, isInlineTag, parseDocument, type ResolvedNode, type ResolvedProps } from "@opendil/core";
-import { DilSandbox } from "@opendil/runtime";
+import { DilSandbox, DirectRuntime } from "@opendil/runtime";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { type DilComponents, DilComponentsContext, type DilRenderFallback } from "./components-context.ts";
 import {
@@ -38,6 +38,13 @@ export interface DilRendererProps {
   readonly isStreaming?: boolean;
   /** Throttle window in ms while streaming. Default 60. */
   readonly throttleMs?: number;
+  /**
+   * Where the compiled program runs. "sandbox" (default) isolates untrusted model output
+   * in a hidden iframe. "direct" evaluates it synchronously in the current context —
+   * build machines included, so a static site can bake the resolved HTML — and is only
+   * safe for sources the host trusts and ships itself. Fixed for the component's life.
+   */
+  readonly execution?: "direct" | "sandbox";
   /** Optional host component overrides (Button, Textarea, CodeBlock, Mermaid, FallbackMarkdown, etc.). */
   readonly components?: DilComponents;
   /** Optional custom fallback renderer while a dynamic sandboxed card is booting. */
@@ -51,6 +58,7 @@ export function DilRenderer({
   source,
   isStreaming = false,
   throttleMs = DEFAULT_THROTTLE_MS,
+  execution = "sandbox",
   components,
   renderFallback,
   className,
@@ -67,11 +75,35 @@ export function DilRenderer({
   const text = useThrottledText(source, isStreaming, throttleMs);
   const compiled = useMemo(() => compileDil(parseDocument(text, { isStreaming })), [text, isStreaming]);
   const rootRef = useRef<HTMLDivElement>(null);
-  const [snapshot, setSnapshot] = useState<readonly ResolvedNode[]>();
   const [sends, setSends] = useState<ReadonlySet<string>>(() => new Set());
-  const [runtime] = useState(() => new DilSandbox(setSnapshot, setSends, () => hostRef.current));
+  // `setSnapshot` is declared after the runtime (the direct engine's first evaluation runs
+  // inside the `useState` below), so both engines receive it through a ref that is always
+  // current. React keeps `setState` referentially stable, so this is one indirection, not
+  // a moving target.
+  const setSnapshotRef = useRef<(tree: readonly ResolvedNode[]) => void>(undefined);
+  const [runtime] = useState(() =>
+    execution === "direct"
+      ? new DirectRuntime(
+          (tree) => setSnapshotRef.current?.(tree),
+          setSends,
+          () => hostRef.current,
+        )
+      : new DilSandbox(
+          (tree) => setSnapshotRef.current?.(tree),
+          setSends,
+          () => hostRef.current,
+        ),
+  );
+  // Direct mode resolves during render — in the browser, and on the build machine while a
+  // static site renders this component to HTML. The same input runs again at hydration;
+  // deterministic programs produce the same tree, so the two renderings agree.
+  const [snapshot, setSnapshot] = useState<readonly ResolvedNode[] | undefined>(() =>
+    execution === "direct" ? (runtime as DirectRuntime).evaluate(compiled.program) : undefined,
+  );
+  setSnapshotRef.current = setSnapshot;
 
   useEffect(() => {
+    if (execution !== "sandbox") return;
     const root = rootRef.current;
     if (!root) return;
     const observer = new IntersectionObserver(([entry]) => runtime.setVisible(entry.isIntersecting), {
@@ -83,7 +115,7 @@ export function DilRenderer({
       runtime.setVisible(false);
       runtime.stop();
     };
-  }, [runtime]);
+  }, [runtime, execution]);
 
   useEffect(() => {
     runtime.update(compiled.program);
@@ -95,16 +127,14 @@ export function DilRenderer({
     <DilComponentsContext.Provider value={mergedComponents}>
       <DilRuntimeContext.Provider value={value}>
         <div ref={rootRef} className={cn("dil-root flex min-w-0 flex-col gap-2 text-sm leading-6", className)}>
-          {compiled.program && !snapshot ? (
-            renderFallback ? (
-              renderFallback(compiled.fallback)
-            ) : FallbackMarkdown ? (
-              <FallbackMarkdown markdown={compiled.fallback} />
-            ) : (
-              <div className="whitespace-pre-wrap text-sm">{compiled.fallback}</div>
-            )
+          {snapshot ? (
+            renderNodes(snapshot, instance, null)
+          ) : renderFallback ? (
+            renderFallback(compiled.fallback)
+          ) : FallbackMarkdown ? (
+            <FallbackMarkdown markdown={compiled.fallback} />
           ) : (
-            renderNodes(compiled.program && snapshot ? snapshot : compiled.tree, instance, null)
+            <div className="whitespace-pre-wrap text-sm">{compiled.fallback}</div>
           )}
         </div>
       </DilRuntimeContext.Provider>

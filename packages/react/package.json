@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"src/*.test.ts\""
+    "test": "pnpm -F @opendil/core build && pnpm -F @opendil/runtime build && pnpm build && node --test \"src/*.test.ts\""
   },
   "dependencies": {
     "@opendil/core": "workspace:*",

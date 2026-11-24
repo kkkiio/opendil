@@ -15,12 +15,11 @@ export interface OurProgram {
 export function createOurProgram(source: string): OurProgram {
   const performed: ReferenceEffect[] = [];
   const runtime = createProgram();
-  const compiled = compileDil(parseDocument(source, { isStreaming: false }));
-  const program = compiled.program;
-  let result = program ? runtime.load(program) : undefined;
-  let tree = program && result ? readTree(result.tree, program.data) : compiled.tree;
+  const { program } = compileDil(parseDocument(source, { isStreaming: false }));
+  let result = runtime.load(program);
+  let tree = readTree(result.tree, program.data);
   const fire = (value: unknown, args?: unknown[]): void => {
-    if (!program || !value) return;
+    if (!value) return;
     const next = runtime.trigger((value as DilHandler).id, args);
     if (!next) return;
     result = next;

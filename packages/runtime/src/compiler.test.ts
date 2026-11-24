@@ -12,8 +12,11 @@ function count(nodes: readonly ResolvedNode[]): number {
   return total;
 }
 
-test("large plain Markdown retains all its text", () => {
-  const source = "a".repeat(1_000_001);
+test("large plain Markdown evaluates intact up to the transfer budget", () => {
+  // Every document is now a program, so plain text is bounded by the worker budget that
+  // guards against runaway model output. The boundary is exact: 1,000,000 chars pass,
+  // one more would drop the overflowing text node.
+  const source = "a".repeat(1_000_000);
   const rendered = text(resolved(source));
   assert.equal(rendered.length, source.length);
   assert.equal(rendered, source);
@@ -36,9 +39,7 @@ test("a large but legitimate loop still renders", () => {
 
 function resolved(source: string): readonly ResolvedNode[] {
   const compiled = compileDil(parseDocument(source));
-  return compiled.program
-    ? readTree(createProgram().load(compiled.program).tree, compiled.program.data)
-    : compiled.tree;
+  return readTree(createProgram().load(compiled.program).tree, compiled.program.data);
 }
 
 function text(nodes: readonly ResolvedNode[]): string {

@@ -1,5 +1,5 @@
 import { collectStatements, toFallbackMarkdown } from "./index.ts";
-import { type DilData, type DilSite, MAX_DIL_DEPTH, MAX_DIL_NODES, type ResolvedNode } from "./render-tree.ts";
+import { type DilData, type DilSite, MAX_DIL_DEPTH, MAX_DIL_NODES } from "./render-tree.ts";
 import { stateStatement } from "./statements.ts";
 import type { DilDocument, DilNode } from "./types.ts";
 
@@ -12,23 +12,30 @@ export interface DilProgram {
   readonly data: DilData;
 }
 
-export type CompiledDil =
-  | { readonly tree: readonly ResolvedNode[]; readonly program?: undefined }
-  | { readonly tree: readonly ResolvedNode[]; readonly program: DilProgram; readonly fallback: string };
+/**
+ * The compiled artifact ("DIL JS"): a JS factory emitted as script parts plus its constant
+ * table, and the degraded Markdown projection used while the program cannot run.
+ */
+export interface CompiledDil {
+  readonly program: DilProgram;
+  readonly fallback: string;
+}
 
-/** Prepare a render tree and, for dynamic documents, a program for the isolated runner. */
+/**
+ * Compile a DIL document into its executable form. Every document becomes a program —
+ * static and dynamic content alike — so downstream has a single shape to run. Where the
+ * program is evaluated (a server build, the page's main thread, or the isolated sandbox)
+ * is the host's decision, not the compiler's.
+ */
 export function compileDil(document: DilDocument): CompiledDil {
   const data: (string | DilSite)[] = [];
   const script: ScriptPart[] = [];
-  let dynamic = false;
   let nodesLeft = MAX_DIL_NODES;
   const emitValue = (code: string, fallback: string): void => {
-    dynamic = true;
     script.push("(__dil.safe(()=>(", { kind: "expr", code, fallback }, "\n)))");
   };
 
-  const emitNodes = (nodes: readonly DilNode[], depth = 0): ResolvedNode[] => {
-    const tree: ResolvedNode[] = [];
+  const emitNodes = (nodes: readonly DilNode[], depth = 0): void => {
     script.push("__dil.flatten([");
     for (const node of nodes) {
       if (depth >= MAX_DIL_DEPTH || nodesLeft <= 0) break;
@@ -37,7 +44,6 @@ export function compileDil(document: DilDocument): CompiledDil {
       if (node.type === "text") {
         const index = data.push(node.value) - 1;
         script.push(`__dil.text(__dilData[${index}]),`);
-        if (node.value) tree.push({ kind: "text", value: node.value });
         continue;
       }
       if (node.type === "expr") {
@@ -47,7 +53,6 @@ export function compileDil(document: DilDocument): CompiledDil {
         continue;
       }
       if (node.type === "if") {
-        dynamic = true;
         script.push("(");
         for (const branch of node.branches) {
           if (branch.cond !== null) {
@@ -62,7 +67,6 @@ export function compileDil(document: DilDocument): CompiledDil {
         continue;
       }
       if (node.type === "each") {
-        dynamic = true;
         script.push("__dil.each(");
         emitValue(node.list, "[]");
         script.push(
@@ -125,7 +129,7 @@ export function compileDil(document: DilDocument): CompiledDil {
         script.push(",");
       }
       script.push("},()=>");
-      const children = emitNodes(
+      emitNodes(
         node.type === "element"
           ? node.children
           : node.kind === "math"
@@ -134,23 +138,14 @@ export function compileDil(document: DilDocument): CompiledDil {
         depth + 1,
       );
       script.push("),");
-      tree.push({ kind: "element", name, synthetic, props, children });
     }
     script.push("])");
-    return tree;
   };
 
   for (const statement of collectStatements(document.raw)) {
-    dynamic = true;
     script.push({ kind: "statement", code: stateStatement(statement), fallback: "" }, "\n;");
   }
   script.push("return ");
-  const tree = emitNodes(document.tree);
-  if (!dynamic) return { tree };
-  const fallback = toFallbackMarkdown(document.tree);
-  return {
-    tree: [],
-    fallback,
-    program: { script, data },
-  };
+  emitNodes(document.tree);
+  return { program: { script, data }, fallback: toFallbackMarkdown(document.tree) };
 }

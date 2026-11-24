@@ -61,8 +61,10 @@ import { DIL_SYSTEM_PROMPT } from "@opendil/core/prompt";
 const doc = parseDocument(source, { isStreaming: false });
 const compiled = compileDil(doc);
 
-// Static trees are ready immediately in `compiled.tree`.
-// Dynamic trees (`{#each}`, `{#if}`, `{@body DIL.useState}`) emit `compiled.program` (`{ script, data }`).
+// Every document — static or dynamic — compiles to the same shape:
+// `compiled.program` (`{ script, data }`), the executable "DIL JS", plus `compiled.fallback`
+// (the degraded Markdown used while the program cannot run).
+// Where the program is evaluated (build machine, page, or sandbox) is the host's choice.
 const plainMarkdown = toFallbackMarkdown(doc.tree);
 ```
 

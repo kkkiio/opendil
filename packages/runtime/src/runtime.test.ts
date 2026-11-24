@@ -14,9 +14,7 @@ const card = [
 ].join("\n");
 
 function load(source: string, runtime = createProgram()) {
-  const compiled = compileDil(parseDocument(source));
-  assert.ok(compiled.program);
-  const { program } = compiled;
+  const { program } = compileDil(parseDocument(source));
   let result = runtime.load(program);
   return {
     get result() {
