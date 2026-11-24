@@ -13,6 +13,9 @@ export { mathHtml } from "./math.ts";
 export * from "./primitives/content.tsx";
 export {
   ControlButton,
+  ControlCheckbox,
+  ControlForm,
+  ControlInput,
   ControlLabel,
   ControlRadio,
   ControlRadioGroup,

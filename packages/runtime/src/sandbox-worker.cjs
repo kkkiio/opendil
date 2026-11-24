@@ -149,7 +149,7 @@
           if (nodes-- <= 0) return null;
           const props = Object.create(null);
           for (const [name, value] of Object.entries(dynamic)) {
-            if (name === "onClick" || name === "onChange") {
+            if (name === "onClick" || name === "onChange" || name === "onSubmit") {
               if (typeof value !== "function") continue;
               const { offset, name: tag } = data[site];
               const id = `${offset}:${tag}:${path}:${name}`;

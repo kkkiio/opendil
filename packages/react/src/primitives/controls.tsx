@@ -221,3 +221,101 @@ function text(value: unknown): string {
 function sameValue(a: unknown, b: unknown): boolean {
   return Object.is(a, b) || (a !== undefined && b !== undefined && String(a) === String(b));
 }
+
+function DefaultInput({ className, ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={cn(
+        "flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+/** `checkbox` (#4): a toggle bound to the document state, like `radio` without a group. */
+export function ControlCheckbox({ props, children }: ControlProps) {
+  const context = useDilRuntime();
+  const handler = props.onChange as DilHandler | undefined;
+  const [draft, setDraft] = useState<boolean>();
+  const version = useRef(0);
+  const checked = draft ?? props.checked === true;
+  const disabled = !context || !handler;
+
+  const toggle = () => {
+    if (!context || !handler) return;
+    const next = !checked;
+    const edit = ++version.current;
+    setDraft(next);
+    void context.runtime
+      .invoke(handler, [next])
+      .catch(() => undefined)
+      .finally(() => {
+        if (edit === version.current) setDraft(undefined);
+      });
+  };
+
+  return (
+    <label className={cn("flex min-w-0 items-start gap-2 text-sm", disabled ? "opacity-60" : "cursor-pointer")}>
+      <input
+        checked={checked}
+        className="mt-[3px] size-3.5 shrink-0 accent-primary"
+        disabled={disabled}
+        onChange={toggle}
+        type="checkbox"
+      />
+      <span className="min-w-0">{children}</span>
+    </label>
+  );
+}
+
+/** `input` (#4): a single-line text field; `required` marks the field for the form. */
+export function ControlInput({ props }: ControlProps) {
+  const context = useDilRuntime();
+  const handler = props.onChange as DilHandler | undefined;
+  const [draft, setDraft] = useState<string>();
+  const version = useRef(0);
+  return (
+    <DefaultInput
+      disabled={!context || !handler}
+      onChange={(event) => {
+        if (!context || !handler) return;
+        const value = event.currentTarget.value;
+        const edit = ++version.current;
+        setDraft(value);
+        void context.runtime
+          .invoke(handler, [value])
+          .catch(() => undefined)
+          .finally(() => {
+            if (edit === version.current) setDraft(undefined);
+          });
+      }}
+      placeholder={typeof props.placeholder === "string" ? props.placeholder : undefined}
+      required={props.required === true}
+      value={draft ?? text(props.value)}
+    />
+  );
+}
+
+/**
+ * `form` (#4): groups input controls and runs `onSubmit` on the implicit submission —
+ * Enter in a field, or a submit button the host renders. Nothing is sent anywhere: the
+ * handler is ordinary document state, exactly like `onClick`.
+ */
+export function ControlForm({ props, children }: ControlProps) {
+  const context = useDilRuntime();
+  const handler = props.onSubmit as DilHandler | undefined;
+  const gap = typeof props.gap === "number" && props.gap > 0 ? Math.min(props.gap, 8) : 2;
+  return (
+    <form
+      className={cn("flex min-w-0 flex-col", `gap-${gap}`)}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (context && handler) void context.runtime.invoke(handler).catch(() => undefined);
+      }}
+    >
+      {children}
+    </form>
+  );
+}

@@ -104,6 +104,8 @@ const BACKGROUND: Record<string, string> = {
   danger: "bg-destructive/10",
   destructive: "bg-destructive/10",
   info: "bg-sky-500/10",
+  // The captured progress-bar fill: a high-contrast surface against its track.
+  "surface-inverted": "bg-primary",
 };
 
 const BORDER_COLOR: Record<string, string> = {
@@ -359,6 +361,9 @@ const TEXT_COLOR: Record<string, string> = {
   danger: "text-destructive",
   destructive: "text-destructive",
   info: "text-sky-600 dark:text-sky-400",
+  // Captured nuance levels below secondary; opacity steps keep the ordering visible.
+  tertiary: "text-muted-foreground/80",
+  subtle: "text-muted-foreground/60",
 };
 
 function textSkinOf(props: SkinProps, base: string): Skin {

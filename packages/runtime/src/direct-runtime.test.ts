@@ -129,3 +129,25 @@ test("GenUI buttons are flagged as send intents and dropped without a host", asy
   assert.ok(intents.at(-1)?.has(handler.id), "the GenUI button must be flagged as a send intent");
   await runtime.invoke(handler); // no host: silently dropped, not thrown
 });
+
+test("form onSubmit survives the wire format and runs as a handler", async () => {
+  const { runtime, trees } = engine(readDilViewState({ root: { count: 0 } }));
+  const source = [
+    "{@body const [count, setCount] = DIL.useState(0)}",
+    "<form gap={2} onSubmit={() => setCount(count + 1)}>",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder is DIL source, not this file.
+    "<input value={`第 ${count} 次`} onChange={() => undefined}/>",
+    "</form>",
+  ].join("\n");
+  runtime.update(programOf(source));
+  const form = find(trees[0]?.tree ?? [], "form");
+  assert.ok(form?.kind === "element");
+  const handler = form.props.onSubmit as DilHandler;
+  assert.ok(handler?.id, "onSubmit must resolve as a handler object");
+  await runtime.invoke(handler);
+  const view = runtime.evaluate(programOf(source));
+  assert.ok(view);
+  const input = find(view.tree, "input");
+  assert.ok(input?.kind === "element");
+  assert.equal(input.props.value, "第 1 次");
+});

@@ -54,3 +54,32 @@ test("a seeded view state restores the card before its first render", () => {
   assert.match(html, /7/);
   assert.ok(!html.includes("whitespace-pre-wrap"));
 });
+
+test("the form-control family renders: checkbox, input, form", () => {
+  const source = [
+    "{@body const [ok, setOk] = DIL.useState(false)}",
+    "<form gap={2} onSubmit={() => setOk(true)}>",
+    '<input value="备注" onChange={() => undefined} placeholder="可选"/>',
+    "<checkbox checked={ok} onChange={setOk}>我已阅读</checkbox>",
+    "</form>",
+  ].join("\n");
+  const html = renderToString(createElement(DilRenderer, { source, execution: "direct" }));
+  assert.match(html, /<form/);
+  assert.match(html, /type="checkbox"/);
+  assert.match(html, /我已阅读/);
+  assert.match(html, /placeholder="可选"/);
+});
+
+test("surface-inverted maps to the primary fill, tertiary/subtle to muted steps", () => {
+  const source = [
+    '<box background="surface-tertiary" height="5px" radius="full" clip>',
+    '<box background="surface-inverted" width="33%" height="100%" radius="full"/>',
+    "</box>",
+    '<text color="tertiary">三级文字</text>',
+    '<text color="subtle">更弱文字</text>',
+  ].join("\n");
+  const html = renderToString(createElement(DilRenderer, { source, execution: "direct" }));
+  assert.match(html, /bg-primary/);
+  assert.match(html, /text-muted-foreground\/80/);
+  assert.match(html, /text-muted-foreground\/60/);
+});
