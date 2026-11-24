@@ -102,7 +102,9 @@ test("cases fail on plain prose", () => {
 
 test("fenced DIL does not count as real DIL", () => {
   const fenced = `\`\`\`jsx\n<box padding={2}><row><badge>边界</badge></row></box>\n\`\`\``;
-  const result = scoreCase(DIL_CASES[0]!, fenced);
+  const scenario = DIL_CASES[0];
+  assert.ok(scenario);
+  const result = scoreCase(scenario, fenced);
   assert.equal(result.dilNodes, 0);
   assert.ok(result.score < 50);
 });
