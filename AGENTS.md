@@ -26,7 +26,7 @@ opendil/
 
 ## Domain Language
 
-- **DIL** — Dynamic Interface Language: a Markdown superset with JSX-like tags, `{#if}/{#each}` control flow, and `{@body}` JS statements.
+- **DIL** — Dynamic Interface Language: a Markdown dialect — prose stays Markdown, raw HTML renders as literal text, plus JSX-like tags, `{#if}/{#each}` control flow, and `{@body}` JS statements.
 - **program** — the output of `compileDil`: script parts plus a constant table. Every document compiles to one, static and dynamic alike.
 - **fallback** — the degraded Markdown projection rendered while a program cannot run (streaming tail, syntax errors, sandbox boot).
 - **resolved tree** — the pure-data node tree (`ResolvedNode`) an engine hands the renderer; identical across execution modes.
