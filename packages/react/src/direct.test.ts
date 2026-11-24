@@ -83,3 +83,20 @@ test("surface-inverted maps to the primary fill, tertiary/subtle to muted steps"
   assert.match(html, /text-muted-foreground\/80/);
   assert.match(html, /text-muted-foreground\/60/);
 });
+
+test("a multi-field form gets a submit path: buttons inside a form are submit buttons", () => {
+  const source = [
+    '{@body const [title, setTitle] = DIL.useState("")}',
+    '{@body const [note, setNote] = DIL.useState("")}',
+    '<form gap={2} onSubmit={() => setTitle("已提交")}>',
+    '<input value={title} onChange={setTitle} placeholder="标题"/>',
+    '<input value={note} onChange={setNote} placeholder="备注"/>',
+    "<button block>提交</button>",
+    "</form>",
+  ].join("\n");
+  const html = renderToString(createElement(DilRenderer, { source, execution: "direct" }));
+  assert.match(html, /type="submit"/);
+  // Outside a form the same button stays inert.
+  const outside = renderToString(createElement(DilRenderer, { source: "<button>提交</button>", execution: "direct" }));
+  assert.match(outside, /type="button"/);
+});

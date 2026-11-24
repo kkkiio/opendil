@@ -66,6 +66,7 @@ function buttonSize(value: unknown): "sm" | "default" | "lg" {
 }
 
 export function ControlButton({ props, children }: ControlProps) {
+  const inForm = useContext(FormContext);
   const context = useDilRuntime();
   const { Button = DefaultButton, Spinner = DefaultSpinner } = useDilComponents();
   const handler = props.onClick as DilHandler | undefined;
@@ -99,7 +100,7 @@ export function ControlButton({ props, children }: ControlProps) {
         onClick={onClick}
         size={buttonSize(props.size)}
         title={sends ? "Sends a new message" : undefined}
-        type="button"
+        type={inForm ? "submit" : "button"}
         variant={color === "primary" || sends ? "default" : "outline"}
       >
         {children}
@@ -113,6 +114,9 @@ export function ControlButton({ props, children }: ControlProps) {
     </span>
   );
 }
+
+/** Buttons inside a form are submit buttons (HTML default); outside they stay inert. */
+const FormContext = createContext(false);
 
 interface RadioGroupContextValue {
   readonly selected: unknown;
@@ -308,14 +312,16 @@ export function ControlForm({ props, children }: ControlProps) {
   const handler = props.onSubmit as DilHandler | undefined;
   const gap = typeof props.gap === "number" && props.gap > 0 ? Math.min(props.gap, 8) : 2;
   return (
-    <form
-      className={cn("flex min-w-0 flex-col", `gap-${gap}`)}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (context && handler) void context.runtime.invoke(handler).catch(() => undefined);
-      }}
-    >
-      {children}
-    </form>
+    <FormContext.Provider value={handler !== undefined}>
+      <form
+        className={cn("flex min-w-0 flex-col", `gap-${gap}`)}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (context && handler) void context.runtime.invoke(handler).catch(() => undefined);
+        }}
+      >
+        {children}
+      </form>
+    </FormContext.Provider>
   );
 }
