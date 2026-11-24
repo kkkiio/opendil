@@ -1,0 +1,88 @@
+# Coverage for the package test suites → Coveralls, plus a table on the run page.
+#
+# Same shape as pi-web-ui's `.github/workflows/coverage.yml`: `continue-on-error` is
+# deliberate, because coverage is a report, not a gate — a Coveralls outage must never
+# block a merge.
+#
+# What is measured: the files the package tests import. Core tests reach their own source
+# directly; runtime/react tests resolve cross-package imports through the workspace links
+# (i.e. `dist/`), so those entries appear as separate rows. The conformance suite is an
+# oracle against captured artifacts rather than unit coverage, and benchmarks need live
+# credentials — both are excluded.
+
+name: coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TESTS: >-
+    packages/core/src/*.test.ts
+    packages/runtime/src/*.test.ts
+    packages/react/src/*.test.ts
+
+jobs:
+  coverage:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build first: react tests import the built dist, and runtime needs generated assets.
+      - name: Build all packages
+        run: pnpm build
+
+      # One run, two destinations: the readable table for the summary, lcov for Coveralls.
+      - name: Measure
+        run: |
+          mkdir -p coverage
+          node --test \
+            --experimental-test-coverage \
+            --test-reporter=spec \
+            --test-reporter=lcov \
+            --test-reporter-destination=coverage/report.txt \
+            --test-reporter-destination=coverage/lcov.info \
+            $TESTS
+          cat coverage/report.txt
+
+      - name: Summary
+        run: |
+          {
+            echo '### Coverage'
+            echo ''
+            echo '```'
+            grep -E '^ℹ (all files|packages/)' coverage/report.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          file: ./coverage/lcov.info
