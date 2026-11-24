@@ -201,12 +201,13 @@ is a small scenario, so its whole snapshot stays reviewable:
 Every fixture has a committed snapshot under `__snapshots__/`:
 
 ```
-<name>.tree.json      state + diagnostics + the lowered render tree
+<name>.tree.yaml      state + diagnostics + the lowered render tree
 <name>.fallback.md    the Markdown projection, readable as prose
 ```
 
-The tree is a compact projection, not raw AST JSON: a text run is just `"文字"`, a small
-subtree stays on one line, attributes read as `{"gap": {"expr": "2"}, "border": true}`.
+The tree is a compact projection, not a raw AST dump: a text run is just `- 结论：`,
+an attribute reads as `expr: "2"`, and scalars are quoted only when YAML would read
+them back as another type (rendered by the `yaml` package, wrapping disabled).
 Offsets (`pos`/`end`) and internal flags (`synthetic`) are omitted because they are noise
 for review; a separate test asserts offsets stay inside the source. Review the diff, then
 either keep it or fix the regression.
