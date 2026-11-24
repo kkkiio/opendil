@@ -21,7 +21,7 @@
   <list-item>用 USB-C 数据线将 MIDI 钢琴与平板连接起来。</list-item>
   <list-item>在 Pad 上打开 **Google Chrome**，访问上面的测试网页。不要使用微信或其他 App 内置浏览器。</list-item>
   <list-item>点击页面上的 **Start MIDI monitor**，并允许 Chrome 请求 MIDI 访问权限。不需要启用 SysEx。</list-item>
-  <list-item>如果出现输入设备列表，选择检测到的 MIDI 设备。设备名称可能是 `USB MIDI Device`、`TERENCE` 或其他名称。</list-item>
+  <list-item>如果出现输入设备列表，选择检测到的 MIDI 设备。设备名称可能是 `USB MIDI Device`、`MIDI Keyboard` 或其他名称。</list-item>
   <list-item>按下电钢琴中间的中央 C，然后松开，观察页面上的消息记录。</list-item>
 </list>
 
