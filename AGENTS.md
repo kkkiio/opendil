@@ -30,3 +30,31 @@ pnpm check:write         # Biome lint + format auto-fix
 - **Imports**: Packages use ESM with `"type": "module"` and TypeScript `rewriteRelativeImportExtensions: true`, so relative imports use `.ts`/`.tsx` extensions (allowing `node --test` to run `.ts` tests directly without a transpile step).
 - **Worker module**: `packages/runtime/src/sandbox-worker.cjs` stays `.cjs` so it runs both as a classic Web Worker script (inlined via `sandbox-assets.gen.ts`) and as a Node-importable module (`@opendil/runtime/worker`).
 - **Testing**: Keep tests fast and dependency-light using `node --test`. When modifying parser/compiler semantics, run `pnpm test:conformance` to verify zero regressions against the reference oracle.
+
+## Operation Guide
+
+### PR Workflow
+
+GitHub PRs are gated by [Codex Review Check](.github/workflows/codex-review-check.yml) (`require-lgtm: true`) and structured by [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md).
+
+When asked to open or update a PR (e.g. after aligning on a design/spec):
+
+1. **Write a high-signal PR description**: Fill out every section of [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) (`Goal`, `Unknown Unknowns & Plan Drifts`, `Visual Explanation & Live Evidence`) as an implementation report for the human — do not restate file-by-file diffs or routine CI test logs.
+2. **Self-heal CI & Codex Review in the background**:
+   - Wait for checks with `gh pr checks --watch`.
+   - If CI or `Codex Review Gate` fails, inspect the failure with `gh run view <run-id> --log-failed`. Fix valid findings (or reply with reasoning and resolve the thread), push, and trigger `@codex review` as instructed until the current `HEAD` receives an LGTM.
+   - Update the PR description if fixes introduce new plan drifts or findings worth noting.
+3. **Auto-merge or escalate**:
+   - Once all checks pass, squash-merge the PR (`gh pr merge --squash --delete-branch`).
+   - Stop and discuss with the maintainer if the review loop does not pass after 3 rounds or a finding requires changing the agreed design/spec.
+
+### Release
+
+The three publishable packages (`@opendil/core`, `@opendil/runtime`, `@opendil/react`) move in lockstep — one version number for all of them, tagged `v<version>`. `@opendil/benchmarks` is private and never ships.
+
+When asked to cut or release a new version:
+
+1. **Bump and verify**: set the same `version` in all three `packages/*/package.json`, then run `pnpm build && pnpm typecheck && pnpm test && pnpm check` locally — all green before anything is tagged.
+2. **Commit and tag**: commit as `chore(release): bump to v<version>` and tag `v<version>`.
+3. **Prepare a draft release, then stop**: create a GitHub Release **draft** with `gh release create v<version> --draft --title "v<version>"` and release notes covering the notable changes since the last release. Do **not** publish it — stop and share the draft URL with the maintainer.
+4. **The maintainer clicks Publish**: [`release.yml`](.github/workflows/release.yml) then verifies the tag against every manifest, runs the full verification suite, and publishes each package to npm (skipping any version already published, so retries are safe).

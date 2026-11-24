@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # The three publishable packages move in lockstep; a tag that does not match
+      # every manifest means the draft was cut against a dirty tree.
+      - name: Verify release version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          for pkg in core runtime react; do
+            version="$(node -p "require('./packages/${pkg}/package.json').version")"
+            if [[ "${version}" != "${tag}" ]]; then
+              echo "packages/${pkg} is ${version}, expected ${tag} (tag ${GITHUB_REF_NAME})" >&2
+              exit 1
+            fi
+          done
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify before shipping
+        run: |
+          pnpm build
+          pnpm typecheck
+          pnpm test
+          pnpm check
+
+      # Publish in dependency order; each step skips a version that is already
+      # on npm, so retrying after a partial failure never re-publishes and a
+      # re-published release stays idempotent. `pnpm publish` rewrites
+      # `workspace:*` dependencies to the real versions on the way out.
+      - name: Publish to npm
+        run: |
+          set -euo pipefail
+          for pkg in core runtime react; do
+            name="$(node -p "require('./packages/${pkg}/package.json').name")"
+            version="$(node -p "require('./packages/${pkg}/package.json').version")"
+            if npm view "${name}@${version}" version > /dev/null 2>&1; then
+              echo "Skipping ${name}@${version} (already published)"
+              continue
+            fi
+            echo "Publishing ${name}@${version}..."
+            pnpm --filter "${name}" publish --access public --no-git-checks
+          done
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
