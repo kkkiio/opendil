@@ -1,5 +1,7 @@
 # OpenDIL
 
+[![Coverage Status](https://coveralls.io/repos/github/kkkiio/opendil/badge.svg?branch=main)](https://coveralls.io/github/kkkiio/opendil?branch=main)
+
 Open-source reference implementation, formal specification, and public corpus for **DIL (Dynamic Interface Language)** — a streaming-first Markdown superset for agent-generated visual explanations and interactive UI.
 
 ## Packages
