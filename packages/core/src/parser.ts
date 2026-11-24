@@ -309,10 +309,9 @@ function pushText(nodes: DilNode[], value: string, pos: number): void {
 }
 
 /**
- * `unknown_tag`: the parser folds vocabulary-unknown tags into prose by design, but a
- * tag carrying an expression attribute (`<checkbox key={…}>`) is clearly meant as a
- * component — folding it silently cost hours of debugging once. Prose HTML without the
- * marker (`<div>`, `<br/>`, autolinks) stays quiet.
+ * `unknown_tag`: the parser folds vocabulary-unknown tags into prose by design — literal
+ * display is their correct fate — and says so, so a vocabulary gap attributes in seconds
+ * instead of hours.
  */
 function diagnoseUnknownTag(ctx: ParseContext): void {
   const { src } = ctx;
@@ -320,10 +319,16 @@ function diagnoseUnknownTag(ctx: ParseContext): void {
   if (!name) return;
   const after = ctx.i + 1 + name.length;
   if (!/[\s/>]/.test(src[after] ?? "")) return; // `<boxy` is prose, not a tag
-  const gt = src.indexOf(">", after);
-  if (gt < 0 || !src.slice(after, gt).includes("={")) return;
   ctx.diag.add("unknown_tag", ctx.i, { tag: name, action: "fallback" });
 }
+
+/**
+ * Why every unknown tag reports (input contract B): DIL eats dialect output — model
+ * messages and authored DIL — not arbitrary Markdown, so `<div>` has no innocent
+ * "prose HTML" explanation here; it is off-dialect markup and renders as literal text,
+ * which the author deserves to be told. The boundary check keeps non-tags (`a < b`,
+ * autolinks, `<3`) quiet; a tag-shaped unknown always speaks.
+ */
 
 function tagAt(src: string, index: number, closing = false): string | null {
   const name = matchAt(TAG_NAME, src, index + (closing ? 2 : 1));
