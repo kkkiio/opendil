@@ -715,6 +715,7 @@ interface FenceOpen {
   readonly length: number;
   readonly info: string;
   readonly contentStart: number;
+  readonly indent: number;
 }
 
 /** Reads the opening line of a fenced block; `lineStart` must be at a line start. */
@@ -737,11 +738,11 @@ function readFenceOpen(src: string, lineStart: number): FenceOpen | null {
     const info = src.slice(k, stop).trim();
     // A backtick info string containing a backtick is not a fence (CommonMark rule).
     if (marker === "`" && info.includes("`")) return null;
-    return { marker, length, info, contentStart: lineEnd < 0 ? src.length : lineEnd + 1 };
+    return { marker, length, info, indent, contentStart: lineEnd < 0 ? src.length : lineEnd + 1 };
   }
 
-  if (src.startsWith("$$", i)) return { marker: "$$", length: 2, info: "", contentStart: i + 2 };
-  if (src.startsWith("\\[", i)) return { marker: "\\[", length: 2, info: "", contentStart: i + 2 };
+  if (src.startsWith("$$", i)) return { marker: "$$", length: 2, info: "", indent, contentStart: i + 2 };
+  if (src.startsWith("\\[", i)) return { marker: "\\[", length: 2, info: "", indent, contentStart: i + 2 };
   return null;
 }
 
@@ -755,11 +756,29 @@ function readFence(ctx: ParseContext, open: FenceOpen): DilFenceNode {
       ctx.diag.add("incomplete_source", pos, { fence: open.marker.repeat(open.length), action: "recovered_parse" });
       const value = stripTrailingNewline(src.slice(open.contentStart));
       ctx.i = src.length;
-      return { type: "fence", kind: "code", info: open.info, value, pos, end: src.length, closed: false };
+      return {
+        type: "fence",
+        kind: "code",
+        info: open.info,
+        indent: open.indent,
+        value,
+        pos,
+        end: src.length,
+        closed: false,
+      };
     }
     const value = stripTrailingNewline(src.slice(open.contentStart, closing.start));
     ctx.i = closing.end;
-    return { type: "fence", kind: "code", info: open.info, value, pos, end: closing.end, closed: true };
+    return {
+      type: "fence",
+      kind: "code",
+      info: open.info,
+      indent: open.indent,
+      value,
+      pos,
+      end: closing.end,
+      closed: true,
+    };
   }
 
   const closer = open.marker === "$$" ? "$$" : "\\]";

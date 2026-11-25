@@ -87,6 +87,8 @@ export interface DilFenceNode {
   readonly kind: "code" | "math";
   /** Code fence info string (`bash`, `json`, …); empty for math. */
   readonly info: string;
+  /** Spaces before the opening delimiter, which Markdown strips from the body. */
+  readonly indent?: number;
   readonly value: string;
   readonly pos: number;
   readonly end: number;

@@ -61,6 +61,7 @@ const RAW_CHILD_TAGS = new Set([
   "math",
   "divider",
   "label",
+  "checkbox",
   "input",
   "textarea",
   "Cite",
@@ -107,6 +108,20 @@ function jsonifyLiteral(code: string): string {
   return code.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3');
 }
 
+/** A table cell always holds one paragraph; Markdown gives a text cell that element, and
+ * so does a cell whose whole content is a single component. */
+const PARAGRAPH_CALL = `__dil.jsx("text",null,`;
+
+/** Inline containers whose content, opening with an ordered-list marker, parses as its
+ * own block and so keeps the paragraph element Markdown would give it. */
+const BLOCK_CONTENT_TAGS = new Set(["text", "label"]);
+
+function startsListMarker(node: DilElementNode): boolean {
+  if (!BLOCK_CONTENT_TAGS.has(node.name)) return false;
+  const first = node.children[0];
+  return first?.type === "text" && /^\d+\.\s/.test(first.value.trimStart());
+}
+
 /** `DIL.useState(init)` without an explicit key gets one injected: the first bound name. */
 function injectStateKeys(code: string): string {
   const binding = code.match(/(?:const|let|var)\s*\[?\s*([A-Za-z_$][\w$]*)/);
@@ -137,10 +152,12 @@ function injectStateKeys(code: string): string {
 class Serializer {
   private readonly constants: unknown[] = [];
   private readonly components: string[] = [];
+  private readonly statements: string[] = [];
   private readonly widgetTag: string;
   private readonly nextId: () => string;
   private cdw = 0;
   private svgDepth = 0;
+  private cellDepth = 0;
   private usesSafe = false;
 
   constructor(options: CompileOptions) {
@@ -163,21 +180,25 @@ class Serializer {
     return `__dilSafe(()=>(${expression}),${failureValue})`;
   }
 
+  /** Every `{@body}` statement is hoisted ahead of the returned tree in document order,
+   * wherever it was written. `DIL.useState` declares a state slot; any other declaration
+   * guards its initializer, so a throwing value cannot take the whole program down. */
+  private statement(code: string): string {
+    if (code.includes("DIL.useState(")) return injectStateKeys(code);
+    const declaration = /^(?:(?:const|let|var)\s+[^=]+?)\s*=\s*([\s\S]+)$/.exec(code);
+    if (!declaration) return code;
+    return `${code.slice(0, code.length - declaration[1].length)}${this.safe(declaration[1], "undefined")}`;
+  }
+
   run(
     document: DilDocument,
     bodyIndex: number,
   ): Omit<CompiledArtifact, "fallbackMarkdown" | "fallbackMarkdownVersion"> {
-    const statements: string[] = [];
-    const body: DilNode[] = [];
-    for (const node of document.tree) {
-      if (node.type === "stmt") statements.push(`${injectStateKeys(node.code)};`);
-      else body.push(node);
-    }
-    const roots = this.emitChildParts(body, false);
+    const roots = this.emitChildParts(document.tree, false);
     const children = roots.join(",");
     const returned = roots.length === 1 ? children : `__dil.jsx(__dil.Fragment,null,${children})`;
     const program =
-      `DIL.render(__dil.jsx(()=>{${PREAMBLE}${statements.join("")}` +
+      `DIL.render(__dil.jsx(()=>{${PREAMBLE}${this.statements.join("")}` +
       `return ${returned};},{"key":"body:${bodyIndex}"}));`;
     const constants = Object.fromEntries(this.constants.map((value, i) => [String(i), value]));
     return {
@@ -256,6 +277,7 @@ class Serializer {
   private emitNode(node: DilNode, rawExpr = false): string {
     switch (node.type) {
       case "stmt":
+        this.statements.push(`${this.statement(node.code)};`);
         return "";
       case "text":
         return this.alloc(node.value);
@@ -270,7 +292,7 @@ class Serializer {
       case "each":
         return this.emitEach(node);
       case "element":
-        if (this.isElementOnlyParagraph(node)) return this.emitNode(node.children[0], rawExpr);
+        if (this.cellDepth === 0 && this.isElementOnlyParagraph(node)) return this.emitNode(node.children[0], rawExpr);
         if (node.name === "code-block" || node.name === "CodeBlock") return this.emitWidget();
         if (HOST_TAGS.has(node.name)) {
           return this.resolvable(node) ? this.emitHostTag(node) : this.emitDegradedHostTag(node);
@@ -367,17 +389,24 @@ class Serializer {
     }
     const singleDynamicChild = node.children.length === 1 && node.children[0].type === "expr";
     const dynamic = attrsDynamic || singleDynamicChild;
-    const raw = RAW_CHILD_TAGS.has(node.name);
+    const listMarker = startsListMarker(node);
+    const raw = RAW_CHILD_TAGS.has(node.name) && !listMarker;
     if (node.name === "svg") this.svgDepth++;
+    if (node.name === "table-cell") this.cellDepth++;
     const children = this.emitChildren(
       node.children,
       !raw,
-      singleDynamicChild && !attrsDynamic,
-      node.name !== "table-cell",
+      singleDynamicChild,
+      node.name !== "table-cell" && !listMarker,
     );
+    if (node.name === "table-cell") this.cellDepth--;
     if (node.name === "svg") this.svgDepth--;
+    const body =
+      node.name === "table-cell" && children && !children.startsWith(PARAGRAPH_CALL)
+        ? `${PARAGRAPH_CALL}${children})`
+        : children;
     const propsText = props.length > 0 ? `{${props.join(",")}}` : "null";
-    const call = `__dil.jsx(${JSON.stringify(node.name)},${propsText}${children ? `,${children}` : ""})`;
+    const call = `__dil.jsx(${JSON.stringify(node.name)},${propsText}${body ? `,${body}` : ""})`;
     return dynamic ? this.safe(call, "null") : call;
   }
 

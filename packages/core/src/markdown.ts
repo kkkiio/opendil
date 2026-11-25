@@ -62,6 +62,19 @@ export function lowerInline(text: string, pos: number): DilNode[] {
   return parseInline(text, pos);
 }
 
+/** Markdown strips the delimiter's own indentation from a fenced body, and only that. */
+function dedentFence(value: string, indent: number): string {
+  if (indent <= 0) return value;
+  return value
+    .split("\n")
+    .map((line) => {
+      let strip = 0;
+      while (strip < indent && line[strip] === " ") strip++;
+      return line.slice(strip);
+    })
+    .join("\n");
+}
+
 /** ```lang → `<code-block language>`; $$ → `<math block value>`. */
 export function fenceToElement(fence: DilFenceNode): DilElementNode {
   if (fence.kind === "math") {
@@ -74,7 +87,8 @@ export function fenceToElement(fence: DilFenceNode): DilElementNode {
     };
   }
   const attrs = fence.info ? [stringAttr("language", firstWord(fence.info), fence.pos)] : [];
-  const children: DilNode[] = fence.value ? [{ type: "text", value: fence.value, pos: fence.pos, raw: true }] : [];
+  const value = dedentFence(fence.value, fence.indent ?? 0);
+  const children: DilNode[] = value ? [{ type: "text", value, pos: fence.pos, raw: true }] : [];
   return { ...el("code-block", children, fence.pos, fence.end, attrs), closed: fence.closed };
 }
 
@@ -256,6 +270,27 @@ function stripPlaceholders(value: string): string {
 // Element tier — InlineProse (no block Markdown)
 // ---------------------------------------------------------------------------
 
+/** Components the model writes as a leaf, on a line of their own. */
+const STANDALONE_CONTENT = new Set(["icon", "badge", "Cite", "Entity", "AsyncImage", "AsyncImageGroup"]);
+
+/** Components that close the paragraph above them even when a `<badge>` or `<Cite>`
+ * would stay inline: a leaf icon is drawn as its own block. */
+const BLOCK_STARTING = new Set(["icon"]);
+
+function startsBlock(node: DilNode): boolean {
+  return standsAlone(node) && BLOCK_STARTING.has((node as DilElementNode).name);
+}
+
+/** A component on a line of its own: it ends the paragraph above it and starts one below,
+ * unlike the same tag written inline (`inline` attribute) inside a sentence. */
+function standsAlone(node: DilNode): boolean {
+  return (
+    node.type === "element" &&
+    STANDALONE_CONTENT.has(node.name) &&
+    !node.attrs.some((attribute) => attribute.name === "inline")
+  );
+}
+
 /**
  * `InlineProse ::= InlineRun ( BlankLine+ InlineRun )*`.
  *
@@ -281,6 +316,13 @@ function lowerInlineProse(input: DilNode[], sourceLength?: number): DilNode[] {
         prose.push(node);
         continue;
       }
+      if (prose.length > 0 && standsAlone(prose[prose.length - 1]) && /^[ \t]*\n/.test(node.value)) {
+        const value = node.value.replace(/^[ \t]*\n/, "");
+        const pos = node.pos + node.value.length - value.length;
+        flushProse();
+        if (value) prose.push({ ...node, value, pos });
+        continue;
+      }
       let start = 0;
       for (const blank of node.value.matchAll(/\n[ \t]*\n/g)) {
         if (blank.index > start)
@@ -292,6 +334,8 @@ function lowerInlineProse(input: DilNode[], sourceLength?: number): DilNode[] {
       continue;
     }
     if (node.type === "expr" || (node.type === "element" && isInlineTag(node.name))) {
+      const previous = prose[prose.length - 1];
+      if (previous?.type === "text" && /\n[ \t]*$/.test(previous.value) && startsBlock(node)) flushProse();
       prose.push(node);
       continue;
     }
