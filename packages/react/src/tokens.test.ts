@@ -56,13 +56,14 @@ test("grid columns become a template, capped to something sane", () => {
   assert.equal(String(layoutSkin("grid", { columns: "auto" }).style.gridTemplateColumns).includes("auto-fit"), true);
 });
 
-test("alignment tokens are class names", () => {
+test("alignment tokens are class names; clip stays box-exclusive", () => {
   const row = layoutSkin("row", { justify: "between", align: "center" });
   assert.equal(row.className.includes("justify-between"), true);
   assert.equal(row.className.includes("items-center"), true);
-  const wrapped = layoutSkin("row", { wrap: true, clip: true });
-  assert.equal(wrapped.className.includes("flex-wrap"), true);
-  assert.equal(wrapped.className.includes("overflow-hidden"), true);
+  assert.equal(layoutSkin("row", { wrap: true }).className.includes("flex-wrap"), true);
+  assert.equal(layoutSkin("row", { wrap: "wrap" }).className.includes("flex-wrap"), true);
+  assert.equal(layoutSkin("row", { clip: true }).className.includes("overflow-hidden"), false);
+  assert.equal(layoutSkin("box", { clip: true }).className.includes("overflow-hidden"), true);
 });
 
 test("typography: size, weight, alignment, tabular numbers", () => {
@@ -107,6 +108,18 @@ test("a list takes the spacing scale and a solid connector", () => {
   assert.equal(layoutSkin("list", { gap: 99 }).className.includes("space-y-1"), true, "off-scale falls back");
   assert.equal(layoutSkin("list", { connector: "solid" }).className.includes("border-l-2"), true);
   assert.equal(layoutSkin("list", { connector: "nope" }).className.includes("border-l-2"), false);
+});
+
+test("box size is a width and height shorthand; grid-item takes nothing", () => {
+  assert.deepEqual(layoutSkin("box", { size: "12px" }).style, { width: "12px", height: "12px" });
+  assert.deepEqual(layoutSkin("box", { size: "nope" }).style, {});
+  assert.deepEqual(layoutSkin("grid-item", { width: "100%", flex: 1 }).style, {});
+});
+
+test("divider color accepts the subtle token and literal colours", () => {
+  assert.equal(layoutSkin("divider", { color: "subtle" }).className.includes("border-border/60"), true);
+  assert.deepEqual(layoutSkin("divider", { color: "#64748b" }).style, { borderColor: "#64748b" });
+  assert.deepEqual(layoutSkin("divider", { spacing: 2 }).style, { marginBlock: "0.5rem" });
 });
 
 test("a table cell honours a column alignment", () => {

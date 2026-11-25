@@ -203,9 +203,12 @@ Reference — tags and values the Web UI renders:
 - Control flow: {#each list as item, i}…{/each}, {#if cond}…{:else}…{/if}, {expr}
 - Expressions: JavaScript expressions.
 
-Attributes:
+Attributes — per tag, exactly these; anything else is dropped:
 
-- Spacing: gap={2}, padding={3} or padding={{x: 2, y: 1}} (1 unit = 4px)
-- Surface: background="surface|surface-secondary|surface-tertiary|card|muted|accent|success|warning|danger|info" (or hex/CSS color), radius="sm|md|lg|xl|full", border, border={{size: 1, color: "success"}}, clip
-- Text: size="2xs|xs|sm|md|lg|xl|2xl", weight="medium|semibold|bold", color="secondary|success|warning|danger|info" (or hex/CSS color), textAlign="left|center|right", tabularNums, lineThrough
-- Sizing & layout: width, height, flex, wrap. Alignment: align="start|center|end|baseline", justify="start|center|end|between"`;
+- <box> (the surface primitive): gap={2}, padding={3} or padding={{x: 2, y: 1}} (1 unit = 4px), background="surface|surface-secondary|surface-tertiary|card|muted|accent|success|warning|danger|info" (or hex/CSS color), radius="sm|md|lg|xl|full", border, border={{size: 1, color: "success"}}, clip, align="start|center|end|baseline", justify="start|center|end|between", width, height, minHeight, flex, size="12px" (width+height shorthand for swatches)
+- <row>, <col> (arrangement only): align, justify, gap, wrap, height — for a surface, wrap a <box> around the row
+- <grid>: columns={n}, gap — <grid-item> takes no attributes
+- <divider>: spacing, color="subtle" (or hex/CSS color)
+- <text>: size="2xs|xs|sm|md|lg|xl|2xl", weight="medium|semibold|bold", color="secondary|success|warning|danger|info" (or hex/CSS color), textAlign="left|center|right", tabularNums, lineThrough
+- <title>: size, color — <caption>: textAlign — <badge>: color (badge is preconfigured: xs pill, do not style its size)
+- <icon>: size="sm|md|lg|xl|2xl", color`;
