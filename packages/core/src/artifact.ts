@@ -4,11 +4,13 @@
  * the captured `model_dil_v2` envelope byte-for-byte after standard formatting.
  *
  * Every emission rule is corpus-derived and enforced by the artifact-diff oracle
- * (`conformance/artifact.test.ts`): guard placement, constant allocation order, the
- * prose-run wrapping, widget contracts for fenced blocks, host-tag resolution ids, and
- * statement key injection. Platform facts the compiler cannot derive from source arrive
- * as options: the internal widget tag name, an id factory (the platform allocates one id
- * per fence or host tag, in document order), and the DIL block's position in the message.
+ * (`conformance/artifact.test.ts`): guard placement, when the `__dilSafe` prelude is
+ * emitted, constant allocation order, the prose-run wrapping, the single-root body shape
+ * (no `Fragment` around one root), widget contracts for fenced blocks, host-tag
+ * resolution ids, and statement key injection. Platform facts the compiler cannot derive
+ * from source arrive as options: the internal widget tag name, an id factory (the platform
+ * allocates one id per fence or host tag, in document order), and the DIL block's position
+ * in the message.
  */
 
 import { toFallbackMarkdown } from "./fallback.ts";
@@ -27,7 +29,8 @@ export interface CompileOptions {
 }
 
 export interface CompiledArtifact {
-  /** The executable program: `DIL.render(__dil.jsx(...))`, closed over `DIL.*` only. */
+  /** The executable program: `DIL.render(__dil.jsx(...))`, closed over `DIL.*` only. The
+   * `__dilSafe` prelude is prepended only when the program actually calls it. */
   readonly code: string;
   /** The constant table the program reads through `DIL.useConstants()`. */
   readonly constants: Record<string, unknown>;
@@ -115,6 +118,7 @@ class Serializer {
   private readonly nextId: () => string;
   private cdw = 0;
   private svgDepth = 0;
+  private usesSafe = false;
 
   constructor(options: CompileOptions) {
     this.widgetTag = options.clientWidgetTag ?? "__clientDefinedWidget";
@@ -130,6 +134,12 @@ class Serializer {
     return this.alloc(this.nextId());
   }
 
+  /** Emit a guard call, recording that the program now needs the `__dilSafe` prelude. */
+  private safe(expression: string, failureValue: string): string {
+    this.usesSafe = true;
+    return `__dilSafe(()=>(${expression}),${failureValue})`;
+  }
+
   run(
     document: DilDocument,
     bodyIndex: number,
@@ -140,27 +150,32 @@ class Serializer {
       if (node.type === "stmt") statements.push(`${injectStateKeys(node.code)};`);
       else body.push(node);
     }
-    const children = this.emitChildren(body, false);
+    const roots = this.emitChildParts(body, false);
+    const children = roots.join(",");
+    const returned = roots.length === 1 ? children : `__dil.jsx(__dil.Fragment,null,${children})`;
+    const program =
+      `DIL.render(__dil.jsx(()=>{${PREAMBLE}${statements.join("")}` +
+      `return ${returned};},{"key":"body:${bodyIndex}"}));`;
     const constants = Object.fromEntries(this.constants.map((value, i) => [String(i), value]));
     return {
-      code:
-        PRELUDE +
-        `DIL.render(__dil.jsx(()=>{${PREAMBLE}${statements.join("")}` +
-        `return __dil.jsx(__dil.Fragment,null,${children});},{"key":"body:${bodyIndex}"}));`,
+      code: (this.usesSafe ? PRELUDE : "") + program,
       constants,
       requiredComponents: [...this.components].sort(),
     };
   }
 
+  private emitChildParts(nodes: readonly DilNode[], rawExpr: boolean): string[] {
+    const parts: string[] = [];
+    for (const node of nodes) {
+      const emitted = this.emitNode(node, rawExpr);
+      if (emitted) parts.push(emitted);
+    }
+    return parts;
+  }
+
   private emitChildren(nodes: readonly DilNode[], wrapRuns: boolean, rawExpr = false, bareSingleText = true): string {
     const parts: string[] = [];
-    if (!wrapRuns) {
-      for (const node of nodes) {
-        const emitted = this.emitNode(node, rawExpr);
-        if (emitted) parts.push(emitted);
-      }
-      return parts.join(",");
-    }
+    if (!wrapRuns) return this.emitChildParts(nodes, rawExpr).join(",");
     const isSpace = (node: DilNode): boolean => node.type === "text" && !node.value.trim();
     let run: DilNode[] = [];
     const flush = () => {
@@ -208,7 +223,7 @@ class Serializer {
       case "text":
         return this.alloc(node.value);
       case "expr":
-        return rawExpr ? node.code : `__dilSafe(()=>(${node.code}),null)`;
+        return rawExpr ? node.code : this.safe(node.code, "null");
       case "fence":
         return node.kind === "math"
           ? `__dil.jsx("math",{"block":true,"value":${this.alloc(node.value)}})`
@@ -230,7 +245,7 @@ class Serializer {
       if (branch.cond === null) {
         out += `:${this.emitChildren(branch.body, true)}`;
       } else {
-        const guard = `(__dilSafe(()=>(${branch.cond}),false))?${this.emitChildren(branch.body, true)}`;
+        const guard = `(${this.safe(branch.cond, "false")})?${this.emitChildren(branch.body, true)}`;
         out += out === "" ? guard : `:${guard}`;
       }
     }
@@ -242,7 +257,7 @@ class Serializer {
     const body = this.emitChildren(node.body, true);
     const roots = node.body.filter((child) => child.type !== "stmt");
     const rendered = roots.length > 1 ? `__dil.jsx(__dil.Fragment,null,${body})` : body;
-    return `__dilSafe(()=>((${node.list}).map((${node.pattern})=>__dilSafe(()=>(${rendered}),null))),[])`;
+    return this.safe(`(${node.list}).map((${node.pattern})=>${this.safe(rendered, "null")})`, "[]");
   }
 
   /** A fenced block becomes a data contract: an id constant the client resolves against,
@@ -273,7 +288,7 @@ class Serializer {
     props.push(`"__resolutionId":${this.takeId()}`);
     const children = this.emitChildren(node.children, false, true);
     const call = `__dil.jsx(${node.name},{${props.join(",")}}${children ? `,${children}` : ""})`;
-    return `__dilSafe(()=>(${call}),null)`;
+    return this.safe(call, "null");
   }
 
   private emitElement(node: DilElementNode): string {
@@ -302,7 +317,7 @@ class Serializer {
     if (node.name === "svg") this.svgDepth--;
     const propsText = props.length > 0 ? `{${props.join(",")}}` : "null";
     const call = `__dil.jsx(${JSON.stringify(node.name)},${propsText}${children ? `,${children}` : ""})`;
-    return dynamic ? `__dilSafe(()=>(${call}),null)` : call;
+    return dynamic ? this.safe(call, "null") : call;
   }
 
   private emitSvgProp(attr: DilAttribute): { text: string; dynamic: boolean } {
