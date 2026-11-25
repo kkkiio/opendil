@@ -1,7 +1,7 @@
 import { toFallbackMarkdown } from "./fallback.ts";
+import { readConstant, readExpression } from "./javascript.ts";
 import { fenceToElement } from "./markdown.ts";
-import { topLevelIndex } from "./scanner.ts";
-import { splitStatements } from "./statements.ts";
+import { readStatements, stateCall } from "./statements.ts";
 import type { DilAttribute, DilDocument, DilElementNode, DilNode } from "./types.ts";
 import { DIL_VOCABULARY } from "./vocabulary.ts";
 
@@ -103,11 +103,6 @@ const STANDALONE_INLINE_TAGS = new Set(
 const NUMBER = /^-?\d+(?:\.\d+)?$/;
 const SVG_TAGS = new Set(["rect", "path", "text", "line", "marker"]);
 
-/** Quote unquoted object keys so a `{size:1}` literal becomes JSON-able. */
-function jsonifyLiteral(code: string): string {
-  return code.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3');
-}
-
 /** A table cell always holds one paragraph; Markdown gives a text cell that element, and
  * so does a cell whose whole content is a single component. */
 const PARAGRAPH_CALL = `__dil.jsx("text",null,`;
@@ -120,33 +115,6 @@ function startsListMarker(node: DilElementNode): boolean {
   if (!BLOCK_CONTENT_TAGS.has(node.name)) return false;
   const first = node.children[0];
   return first?.type === "text" && /^\d+\.\s/.test(first.value.trimStart());
-}
-
-/** `DIL.useState(init)` without an explicit key gets one injected: the first bound name. */
-function injectStateKeys(code: string): string {
-  const binding = code.match(/(?:const|let|var)\s*\[?\s*([A-Za-z_$][\w$]*)/);
-  const call = code.indexOf("DIL.useState(");
-  if (!binding || call < 0) return code;
-  const start = call + "DIL.useState(".length;
-  let depth = 0;
-  let quote = "";
-  for (let i = start; i < code.length; i++) {
-    const ch = code[i];
-    if (quote) {
-      if (ch === "\\") i++;
-      else if (ch === quote) quote = "";
-      continue;
-    }
-    if (ch === '"' || ch === "'") quote = ch;
-    else if (ch === "(" || ch === "[" || ch === "{") depth++;
-    else if (ch === ")" || ch === "]" || ch === "}") {
-      if (ch === ")") {
-        if (depth === 0) return `${code.slice(0, i)},{key:"${binding[1]}"}${code.slice(i)}`;
-        depth--;
-      } else depth--;
-    } else if (ch === "," && depth === 0) return code;
-  }
-  return code;
 }
 
 class Serializer {
@@ -182,14 +150,52 @@ class Serializer {
     return `__dilSafe(()=>(${expression}),${failureValue})`;
   }
 
-  /** Every `{@body}` statement is hoisted ahead of the returned tree in document order,
-   * wherever it was written. `DIL.useState` declares a state slot; any other declaration
-   * guards its initializer, so a throwing value cannot take the whole program down. */
-  private statement(code: string): string {
-    if (code.includes("DIL.useState(")) return injectStateKeys(code);
-    const declaration = /^(?:(?:const|let|var)\s+[^=]+?)\s*=\s*([\s\S]+)$/.exec(code);
-    if (!declaration || topLevelIndex(declaration[1], ",") >= 0) return code;
-    return `${code.slice(0, code.length - declaration[1].length)}${this.safe(declaration[1], "undefined")}`;
+  private emitStatements(source: string): void {
+    const parsed = readStatements(source);
+    if (!parsed) {
+      this.statements.push(`${source}\n;`);
+      return;
+    }
+
+    const { statements, tokens } = parsed;
+    let cursor = 0;
+    for (const statement of statements) {
+      const start = statement.start;
+      const end = source[statement.end - 1] === ";" ? statement.end - 1 : statement.end;
+      const edits: { offset: number; end: number; text: string }[] = [];
+      if (statement.type === "VariableDeclaration") {
+        for (const binding of statement.declarations) {
+          const state = stateCall(binding);
+          if (state) {
+            const { key, call } = state;
+            if (call.arguments.length > 1 || call.arguments[0]?.type === "SpreadElement") continue;
+            const closer = call.end - 1;
+            const lastArg = call.arguments[0];
+            const hasTrailingComma =
+              lastArg &&
+              tokens.some((token) => token.type.label === "," && token.start >= lastArg.end && token.end <= closer);
+            const prefix = lastArg ? (hasTrailingComma ? "" : ",") : "undefined,";
+            edits.push({ offset: closer, end: closer, text: `${prefix}{key:${JSON.stringify(key)}}` });
+          } else if (statement.declarations.length === 1 && binding.init) {
+            const initializerStart = binding.init.start;
+            const equals = tokens.find(
+              (token) => token.type.label === "=" && token.start >= binding.id.end && token.end <= initializerStart,
+            );
+            if (!equals) continue;
+            const value = source.slice(equals.end, end).trimStart();
+            edits.push({ offset: end - value.length, end, text: this.safe(value, "undefined") });
+          }
+        }
+      }
+      let emitted = source.slice(start, end);
+      for (const edit of edits.reverse()) {
+        emitted = emitted.slice(0, edit.offset - start) + edit.text + emitted.slice(edit.end - start);
+      }
+      this.statements.push(`${source.slice(cursor, start).trimStart()}${emitted};`);
+      cursor = statement.end;
+    }
+    const trailing = source.slice(cursor).trim();
+    if (trailing) this.statements.push(`${trailing}\n`);
   }
 
   run(
@@ -292,14 +298,16 @@ class Serializer {
   private emitNode(node: DilNode, rawExpr = false): string {
     switch (node.type) {
       case "stmt":
-        for (const statement of splitStatements(node.code)) {
-          this.statements.push(`${this.statement(statement)};`);
-        }
+        this.emitStatements(node.code);
         return "";
       case "text":
         return this.alloc(node.value);
-      case "expr":
-        return rawExpr ? node.code : this.safe(node.code, "null");
+      case "expr": {
+        const expression = readExpression(node.code);
+        const code = expression?.code ?? node.code;
+        if (!rawExpr) return this.safe(code, "null");
+        return expression?.node.type === "SequenceExpression" ? `(${code})` : code;
+      }
       case "fence":
         return node.kind === "math"
           ? `__dil.jsx("math",{"block":true,"value":${this.alloc(node.value)}})`
@@ -342,7 +350,7 @@ class Serializer {
       const children = this.emitChildren(branch.body, true);
       const body = children.length ? assembleRoot(children, []) : "null";
       if (branch.cond === null) return `${expression}${body}`;
-      const condition = this.safe(branch.cond, "false");
+      const condition = this.safe(readExpression(branch.cond)?.code ?? branch.cond, "false");
       expression += `(${condition})?${body}:`;
     }
     return `${expression}null`;
@@ -352,7 +360,8 @@ class Serializer {
     const body = this.emitChildren(node.body, true).join(",");
     const roots = node.body.filter((child) => child.type !== "stmt");
     const rendered = !body ? "null" : roots.length > 1 ? `__dil.jsx(__dil.Fragment,null,${body})` : body;
-    return this.safe(`(${node.list}).map((${node.pattern})=>${this.safe(rendered, "null")})`, "[]");
+    const list = readExpression(node.list)?.code ?? node.list;
+    return this.safe(`(${list}).map((${node.pattern})=>${this.safe(rendered, "null")})`, "[]");
   }
 
   /** A fenced block becomes a data contract: an id constant the client resolves against,
@@ -402,7 +411,7 @@ class Serializer {
         continue;
       }
       const inSvg = node.name === "svg" || (this.svgDepth > 0 && SVG_TAGS.has(node.name));
-      const emitted = inSvg ? this.emitSvgProp(attr) : this.emitProp(attr);
+      const emitted = this.emitProp(attr, inSvg);
       if (emitted.dynamic) attrsDynamic = true;
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
@@ -431,31 +440,31 @@ class Serializer {
     return dynamic ? this.safe(call, "null") : call;
   }
 
-  private emitSvgProp(attr: DilAttribute): { text: string; dynamic: boolean } {
-    if (attr.kind === "string") return { text: this.alloc(attr.value), dynamic: false };
+  private emitProp(attr: DilAttribute, inSvg = false): { text: string; dynamic: boolean } {
     if (attr.kind === "boolean") return { text: "true", dynamic: false };
+    if (attr.kind === "string") {
+      return { text: inSvg ? this.alloc(attr.value) : JSON.stringify(attr.value), dynamic: false };
+    }
     const code = attr.value as string;
-    if (NUMBER.test(code)) return { text: this.alloc(code), dynamic: false };
-    return this.emitProp(attr);
-  }
+    if (attr.kind === "raw") {
+      if (NUMBER.test(code)) return { text: inSvg ? this.alloc(code) : code, dynamic: false };
+      return { text: JSON.stringify(code), dynamic: false };
+    }
+    const expression = readExpression(code);
+    if (!expression) return { text: code, dynamic: true };
 
-  private emitProp(attr: DilAttribute): { text: string; dynamic: boolean } {
-    if (attr.kind === "boolean") return { text: "true", dynamic: false };
-    if (attr.kind === "string") return { text: JSON.stringify(attr.value), dynamic: false };
-    const code = attr.value as string;
-    if (NUMBER.test(code)) return { text: code, dynamic: false };
-    if (attr.kind === "raw") return { text: JSON.stringify(code), dynamic: false };
-    if (code.startsWith("{") || code.startsWith("[")) {
-      try {
-        return { text: this.alloc(JSON.parse(jsonifyLiteral(code))), dynamic: false };
-      } catch {
-        return { text: code, dynamic: false };
-      }
+    const constant = readConstant(expression.node);
+    if (Array.isArray(constant) || (constant !== null && typeof constant === "object")) {
+      return { text: this.alloc(constant), dynamic: false };
     }
-    if (code.startsWith('"') || code.startsWith("'")) {
-      return { text: code, dynamic: false };
+    if (typeof constant === "number") {
+      return { text: inSvg ? this.alloc(code) : expression.code, dynamic: false };
     }
-    return { text: code, dynamic: true };
+    if (expression.node.type === "Literal" && typeof expression.node.value === "string") {
+      return { text: expression.code, dynamic: false };
+    }
+    const text = expression.node.type === "SequenceExpression" ? `(${expression.code})` : expression.code;
+    return { text, dynamic: true };
   }
 }
 

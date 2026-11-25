@@ -214,3 +214,46 @@ test("empty each bodies leave surrounding text visible", () => {
     ],
   );
 });
+
+test("body statements handle automatic semicolons, comments and regular expressions", () => {
+  const nodes = resolved(
+    [
+      "{@body",
+      'const source = "DIL.useState("',
+      "const matcher = /a;b/",
+      'const match = matcher.test("a;b") // a semicolon here ; is comment text',
+      "}",
+      "<text>{source} {match ? 'matched' : 'missed'}</text>",
+    ].join("\n"),
+  );
+  const content = nodes.flatMap((node) => (node.kind === "element" ? node.children : []));
+  assert.equal(content.map((node) => (node.kind === "text" ? node.value : "")).join(""), "DIL.useState( matched");
+});
+
+test("literal and computed object props preserve JavaScript values", () => {
+  const source = [
+    "{@body const count = 4}",
+    "<box data={{label: 'one', items: [1, 2,],}}/>",
+    "<box data={{count, value: count + 2}}/>",
+    "<box data={{value: 1, error: missing()}}/>",
+  ].join("\n");
+  const boxes = find(resolved(source), "box");
+  assert.deepEqual(
+    boxes.map((node) => (node.kind === "element" ? node.props.data : undefined)),
+    [
+      { label: "one", items: [1, 2] },
+      { count: 4, value: 6 },
+    ],
+  );
+});
+
+test("a line comment in an expression cannot consume the surrounding card", () => {
+  const nodes = resolved("<box gap={1 // columns\n}><text>{2 // visible\n}</text></box>");
+  const [box] = find(nodes, "box");
+  assert.ok(box?.kind === "element");
+  assert.equal(box.props.gap, 1);
+  assert.deepEqual(
+    box.children.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [{ kind: "text", value: "2" }],
+  );
+});

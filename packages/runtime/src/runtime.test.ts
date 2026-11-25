@@ -145,3 +145,19 @@ test("a failed interaction leaves the visible controls available", () => {
   assert.equal(executor.trigger(session.result.buttons[0]), null);
   assert.deepEqual(session.fire("button", "onClick", [], 1).effects, ["continue"]);
 });
+
+test("state restoration survives whitespace, comments and trailing commas in a call", () => {
+  for (const arguments_ of ["(0)", " (0)", " /* initial */ (0 /* end */,)", "(\n0\n)", "()"]) {
+    const executor = createExecutor({ count: 5 });
+    const source = `{@body const [count, setCount] = DIL.useState${arguments_}}\n<button onClick={() => setCount(count + 1)}>{count}</button>`;
+    const session = load(source, executor);
+    assert.deepEqual(session.result.state, { count: 5 });
+    assert.deepEqual(session.fire("button", "onClick").state, { count: 6 });
+  }
+});
+
+test("state recovery uses the authored key when the call provides options", () => {
+  const source = '{@body const [count] = DIL.useState /* options */ (0, { key: "saved" })}\n<text>{count}</text>';
+  const session = load(source, createExecutor({ saved: 8 }));
+  assert.deepEqual(session.result.state, { saved: 8 });
+});

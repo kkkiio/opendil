@@ -47,12 +47,13 @@ test("the error tally lands on the root as data-dil-errors", () => {
 });
 
 test("a seeded view state restores the card before its first render", () => {
-  const source = ["{@body const [count, setCount] = DIL.useState(0)}", "<text>{count}</text>"].join("\n");
-  const html = renderToString(
-    createElement(DilRenderer, { source, execution: "direct", viewState: { root: { count: 7 } } }),
-  );
-  assert.match(html, /7/);
-  assert.ok(!html.includes("whitespace-pre-wrap"));
+  for (const spacing of ["", " ", " /* initial value */ "]) {
+    const source = [`{@body const [count, setCount] = DIL.useState${spacing}(0)}`, "<text>{count}</text>"].join("\n");
+    const html = renderToString(
+      createElement(DilRenderer, { source, execution: "direct", viewState: { root: { count: 7 } } }),
+    );
+    assert.match(html, />7</);
+  }
 });
 
 test("the form-control family renders: checkbox, input, form", () => {

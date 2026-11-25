@@ -30,6 +30,7 @@
   "dependencies": {
     "@streamdown/cjk": "^1.0.3",
     "@types/mdast": "^4.0.4",
+    "acorn": "^8.19.0",
     "micromark-util-types": "^2.0.3",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
