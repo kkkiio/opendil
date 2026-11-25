@@ -1,10 +1,10 @@
-import type { DilHandler, DilProgram } from "@kkkiio/dil-core";
+import type { CompiledArtifact, DilHandler } from "@kkkiio/dil-core";
 import type { DilHost, DilSandbox, DirectRuntime } from "@kkkiio/dil-runtime";
 import { createContext, useContext } from "react";
 
 /** The surface a renderer's controls need, satisfied by both DilSandbox and DirectRuntime. */
 export interface DilRuntimeHandle {
-  update(program: DilProgram | undefined): void;
+  update(artifact: CompiledArtifact | undefined): void;
   setVisible(visible: boolean): void;
   invoke(handler: DilHandler, args?: unknown[], onSend?: () => void): Promise<void>;
   stop(): void;

@@ -15,12 +15,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 // Fixed seeds: a failing property reproduces exactly, and CI does not flip on a random
 // draw. Bump the seed deliberately to explore a new slice of the input space.
-import { compileDil, type DilNode, hasDilElements, parseDocument, readTree } from "@kkkiio/dil-core";
+import { compileDil, type DilNode, hasDilElements, parseDocument } from "@kkkiio/dil-core";
 import fc from "fast-check";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
-import { createProgram } from "./sandbox-worker.cjs";
+import { createExecutor } from "./sandbox-worker.cjs";
 
 const mdastParser = unified().use(remarkParse).use(remarkGfm);
 
@@ -163,7 +163,7 @@ test("property: inline DIL neighbours keep their separators", () => {
       const expected = atoms.map((atom) => atom.text).join(" ");
       // Resolve first: `{1 + 1}` is an `expr` node until it is evaluated.
       const compiled = compileDil(parseDocument(source));
-      const resolved = readTree(createProgram().load(compiled.program).tree, compiled.program.data);
+      const resolved = createExecutor().load(compiled).tree;
       const actual = squash(
         resolved.map((node) => (node.kind === "text" ? node.value : "")).join("") +
           resolved.map((node) => (node.kind === "element" ? flatten(node.children) : "")).join(""),

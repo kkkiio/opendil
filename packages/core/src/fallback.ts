@@ -31,7 +31,9 @@ function renderNodes(nodes: DilNode[], ctx: RenderContext): string {
         break;
       case "fence":
         out +=
-          node.kind === "math" ? `\n\n$$\n${node.value}\n$$\n\n` : `\n\n\`\`\`${node.info}\n${node.value}\n\`\`\`\n\n`;
+          node.kind === "math"
+            ? `\n\n\\[\n${node.value}\n\\]\n\n`
+            : `\n\n\`\`\`${node.info}\n${node.value}\n\`\`\`\n\n`;
         break;
       case "if":
         out += renderNodes(node.branches[0]?.body ?? [], ctx);
@@ -61,7 +63,7 @@ function renderElement(node: DilElementNode, ctx: RenderContext): string {
       const size = attributeValue(node, "size");
       const depth = Number(attributeValue(node, "level"));
       const level = depth >= 1 && depth <= 6 ? depth : size === "xl" || size === "2xl" ? 1 : size === "lg" ? 2 : 3;
-      return `\n\n${"#".repeat(level)} ${inner()}\n\n`;
+      return `\n\n${"#".repeat(level)} ${inner().replace(/^(\d+)\./, "$1\\.")}\n\n`;
     }
     case "text":
       return hasAttribute(node, "lineThrough") ? `~~${inner()}~~` : inner();
@@ -88,7 +90,7 @@ function renderElement(node: DilElementNode, ctx: RenderContext): string {
     case "math": {
       const value = attributeValue(node, "value") ?? inner();
       if (!value) return "";
-      return hasAttribute(node, "block") ? `\n\n$$\n${value}\n$$\n\n` : `$${value}$`;
+      return hasAttribute(node, "block") ? `\n\n\\[\n${value}\n\\]\n\n` : `$${value}$`;
     }
     case "code-block":
     case "CodeBlock": {
@@ -216,11 +218,7 @@ function renderTable(node: DilElementNode, ctx: RenderContext): string {
     (child): child is DilElementNode => child.type === "element" && child.name === "table-cell",
   );
   const columns = Math.max(1, rendered[0].split("|").length - 2);
-  rendered.splice(
-    1,
-    0,
-    `| ${Array.from({ length: columns }, (_, column) => marker(headerCells[column] && attributeValue(headerCells[column] as DilElementNode, "textAlign"))).join(" | ")} |`,
-  );
+  rendered.splice(1, 0, `|${Array.from({ length: columns }, () => "--------").join("|")}|`);
   return `\n\n${rendered.join("\n")}\n\n`;
 }
 
@@ -290,7 +288,7 @@ export function tidyFallback(markdown: string): string {
 
   return kept
     .join("\n")
-    .replace(/\n{4,}/g, "\n\n\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 

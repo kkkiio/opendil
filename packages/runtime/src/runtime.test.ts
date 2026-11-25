@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileDil, type DilHandler, parseDocument, readTree } from "@kkkiio/dil-core";
-import { createProgram } from "./sandbox-worker.cjs";
+import { compileDil, type DilHandler, parseDocument, type ResolvedNode } from "@kkkiio/dil-core";
+import { createExecutor } from "./sandbox-worker.cjs";
 
 const card = [
   '{@body const [choice, setChoice] = DIL.useState("A", { key: "option" })}',
@@ -13,20 +13,34 @@ const card = [
   '<button onClick={() => GenUI.issueNewTurn(choice + ": " + details)}>Send</button>',
 ].join("\n");
 
-function load(source: string, runtime = createProgram()) {
-  const { program } = compileDil(parseDocument(source));
-  let result = runtime.load(program);
+type Executor = ReturnType<typeof createExecutor>;
+
+function artifactOf(source: string) {
+  return compileDil(parseDocument(source));
+}
+
+function find(nodes: readonly ResolvedNode[], name: string): ResolvedNode[] {
+  const out: ResolvedNode[] = [];
+  for (const node of nodes) {
+    if (node.kind !== "element") continue;
+    if (node.name === name) out.push(node);
+    out.push(...find(node.children, name));
+  }
+  return out;
+}
+
+function load(source: string, executor: Executor = createExecutor()) {
+  let result = executor.load(artifactOf(source));
   return {
     get result() {
       return result;
     },
-    fire(tag: string, event: "onClick" | "onChange", args?: unknown[], index = 0) {
-      const nodes = readTree(result.tree, program.data);
-      const control = nodes.filter((node) => node.kind === "element" && node.name === tag)[index];
+    fire(tag: string, event: "onClick" | "onChange", args: unknown[] = [], index = 0) {
+      const control = find(result.tree, tag)[index];
       assert.ok(control?.kind === "element");
       const handler = control.props[event] as DilHandler;
       assert.ok(handler?.id);
-      const next = runtime.trigger(handler.id, args);
+      const next = executor.trigger(handler.id, args);
       assert.ok(next);
       result = next;
       return next;
@@ -51,22 +65,22 @@ test("ordered form events submit exactly the latest value", () => {
 });
 
 test("streaming and recreating the runner preserve state while a fresh page starts over", () => {
-  const runtime = createProgram();
-  const session = load(card, runtime);
+  const executor = createExecutor();
+  const session = load(card, executor);
   session.fire("radio-group", "onChange", ["B"]);
   session.fire("textarea", "onChange", ["typed"]);
-  const updated = load(`${card}\n<text>{choice}</text>`, runtime);
+  const updated = load(`${card}\n<text>{choice}</text>`, executor);
   assert.deepEqual(updated.result.state, { option: "B", count: 0, details: "typed" });
-  const restored = load(card, createProgram(updated.result.state));
+  const restored = load(card, createExecutor(updated.result.state));
   assert.deepEqual(restored.fire("button", "onClick", [], 1).effects, ["B: typed"]);
   assert.equal(load(card).result.state.option, "A");
 });
 
 test("a streamed state declaration only initializes its slot when it is complete", () => {
-  const runtime = createProgram();
-  const cut = load("{@body const [n, setN] = DIL.useState( }<text>{n}</text>", runtime);
-  assert.deepEqual(cut.result.state, {});
-  assert.deepEqual(load("{@body const [n, setN] = DIL.useState(5)}<text>{n}</text>", runtime).result.state, { n: 5 });
+  // A half-arrived statement is not runnable code, so the load fails and the engine keeps
+  // its previous tree; once the statement closes, its slot initializes.
+  assert.throws(() => load("{@body const [n, setN] = DIL.useState( }<text>{n}</text>").result);
+  assert.deepEqual(load("{@body const [n, setN] = DIL.useState(5)}<text>{n}</text>").result.state, { n: 5 });
 });
 
 test("rendering never starts a user turn or applies a setter", () => {
@@ -93,17 +107,16 @@ test("button intent follows the current state and calls through aliases", () => 
     '{@body const send = () => GenUI.issueNewTurn("continue")}',
     "<button onClick={() => revealed ? send() : setRevealed(true)}>Continue</button>",
   ].join("\n");
-  const { program } = compileDil(parseDocument(source));
-  assert.ok(program);
+  const artifact = artifactOf(source);
   const active = load(source);
-  const preview = createProgram(active.result.state);
-  const before = preview.load(program);
+  const preview = createExecutor(active.result.state);
+  const before = preview.load(artifact);
   assert.equal(preview.probe(before.buttons[0]), false);
   assert.deepEqual(active.result.state, { revealed: false });
 
   assert.deepEqual(active.fire("button", "onClick").effects, []);
-  const after = createProgram(active.result.state);
-  const ready = after.load(program);
+  const after = createExecutor(active.result.state);
+  const ready = after.load(artifact);
   assert.equal(after.probe(ready.buttons[0]), true);
   assert.deepEqual(active.result.effects, []);
   assert.deepEqual(active.fire("button", "onClick").effects, ["continue"]);

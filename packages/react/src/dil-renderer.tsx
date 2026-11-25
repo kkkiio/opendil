@@ -106,7 +106,7 @@ export function DilRenderer({
   // static site renders this component to HTML. The same input runs again at hydration;
   // deterministic programs produce the same tree, so the two renderings agree.
   const [snapshot, setSnapshot] = useState<DirectSnapshot | undefined>(() =>
-    execution === "direct" ? (runtime as DirectRuntime).evaluate(compiled.program) : undefined,
+    execution === "direct" ? (runtime as DirectRuntime).evaluate(compiled) : undefined,
   );
   setSnapshotRef.current = setSnapshot;
 
@@ -126,8 +126,8 @@ export function DilRenderer({
   }, [runtime, execution]);
 
   useEffect(() => {
-    runtime.update(compiled.program);
-  }, [runtime, compiled.program]);
+    runtime.update(compiled);
+  }, [runtime, compiled]);
 
   const value = useMemo(() => ({ runtime, host, sends }), [runtime, host, sends]);
   const FallbackMarkdown = mergedComponents.FallbackMarkdown;
@@ -142,11 +142,11 @@ export function DilRenderer({
           {snapshot ? (
             renderNodes(snapshot.tree, instance, null)
           ) : renderFallback ? (
-            renderFallback(compiled.fallback)
+            renderFallback(compiled.fallbackMarkdown)
           ) : FallbackMarkdown ? (
-            <FallbackMarkdown markdown={compiled.fallback} />
+            <FallbackMarkdown markdown={compiled.fallbackMarkdown} />
           ) : (
-            <div className="whitespace-pre-wrap text-sm">{compiled.fallback}</div>
+            <div className="whitespace-pre-wrap text-sm">{compiled.fallbackMarkdown}</div>
           )}
         </div>
       </DilRuntimeContext.Provider>

@@ -61,7 +61,7 @@ export function collectStatements(nodes: readonly DilNode[], out: string[] = [])
   return out;
 }
 
-export type { CompiledDil, DilProgram, ScriptPart } from "./compiler.ts";
+export type { CompiledArtifact, CompileOptions } from "./compiler.ts";
 export { compileDil } from "./compiler.ts";
 export { hasDilElements } from "./detect.ts";
 export { tidyFallback, toFallbackMarkdown } from "./fallback.ts";
