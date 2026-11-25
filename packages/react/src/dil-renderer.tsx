@@ -176,7 +176,7 @@ function useCompiledArtifact(text: string, isStreaming: boolean): CompiledArtifa
   const streamed = useRef<{ source: string; artifact: CompiledArtifact } | null>(null);
   return useMemo(() => {
     if (isStreaming) {
-      session.current ??= createCompileSession();
+      session.current ??= createCompileSession({ includeMarkdownHeadingLevels: true });
       const artifact = session.current.compile(text);
       streamed.current = { source: text, artifact };
       return artifact;
@@ -190,7 +190,7 @@ function useCompiledArtifact(text: string, isStreaming: boolean): CompiledArtifa
     }
     session.current = null;
     streamed.current = null;
-    return compileDil(parseDocument(text, { isStreaming: false }));
+    return compileDil(parseDocument(text, { isStreaming: false }), { includeMarkdownHeadingLevels: true });
   }, [text, isStreaming]);
 }
 
@@ -333,7 +333,7 @@ function renderNode(node: ResolvedNode, key: string, svg: SvgContext | null) {
 
     case "title":
       return (
-        <Title key={key} {...skin} level={node.synthetic ? props.level : undefined}>
+        <Title key={key} {...skin} level={props.level}>
           {rendered}
         </Title>
       );

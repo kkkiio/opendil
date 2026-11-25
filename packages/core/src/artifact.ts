@@ -1,4 +1,6 @@
 import { toFallbackMarkdown } from "./fallback.ts";
+import { topLevelIndex } from "./scanner.ts";
+import { splitStatements } from "./statements.ts";
 import type { DilAttribute, DilDocument, DilElementNode, DilNode } from "./types.ts";
 import { DIL_VOCABULARY } from "./vocabulary.ts";
 
@@ -9,6 +11,8 @@ export interface CompileOptions {
   readonly widgetIdFactory?: () => string;
   /** The DIL block's position within the host message. */
   readonly bodyIndex?: number;
+  /** Include Markdown heading levels for renderers that expose a document outline. */
+  readonly includeMarkdownHeadingLevels?: boolean;
   /**
    * Child indexes where a streaming batch starts, in increasing order, for a program
    * compiled by a `createCompileSession` that has already seen several revisions of the
@@ -148,6 +152,7 @@ class Serializer {
   private readonly statements: string[] = [];
   private readonly widgetTag: string;
   private readonly nextId: () => string;
+  private readonly includeMarkdownHeadingLevels: boolean;
   private cdw = 0;
   private svgDepth = 0;
   private cellDepth = 0;
@@ -156,6 +161,7 @@ class Serializer {
   constructor(options: CompileOptions) {
     this.widgetTag = options.clientWidgetTag ?? "__clientDefinedWidget";
     this.nextId = options.widgetIdFactory ?? (() => crypto.randomUUID());
+    this.includeMarkdownHeadingLevels = options.includeMarkdownHeadingLevels ?? false;
   }
 
   private alloc(value: unknown): string {
@@ -179,7 +185,7 @@ class Serializer {
   private statement(code: string): string {
     if (code.includes("DIL.useState(")) return injectStateKeys(code);
     const declaration = /^(?:(?:const|let|var)\s+[^=]+?)\s*=\s*([\s\S]+)$/.exec(code);
-    if (!declaration) return code;
+    if (!declaration || topLevelIndex(declaration[1], ",") >= 0) return code;
     return `${code.slice(0, code.length - declaration[1].length)}${this.safe(declaration[1], "undefined")}`;
   }
 
@@ -225,9 +231,9 @@ class Serializer {
     rawExpr = false,
     bareSingleText = true,
     includeAuthoredInline = false,
-  ): string {
+  ): string[] {
+    if (!wrapRuns) return this.emitChildParts(nodes, rawExpr);
     const parts: string[] = [];
-    if (!wrapRuns) return this.emitChildParts(nodes, rawExpr).join(",");
     const isSpace = (node: DilNode): boolean => node.type === "text" && !node.value.trim();
     let run: DilNode[] = [];
     const flush = () => {
@@ -263,7 +269,7 @@ class Serializer {
       }
     }
     flush();
-    return parts.join(",");
+    return parts;
   }
 
   private isMarkdownInline(node: DilNode): boolean {
@@ -283,7 +289,9 @@ class Serializer {
   private emitNode(node: DilNode, rawExpr = false): string {
     switch (node.type) {
       case "stmt":
-        this.statements.push(`${this.statement(node.code)};`);
+        for (const statement of splitStatements(node.code)) {
+          this.statements.push(`${this.statement(statement)};`);
+        }
         return "";
       case "text":
         return this.alloc(node.value);
@@ -323,21 +331,19 @@ class Serializer {
   }
 
   private emitIf(node: Extract<DilNode, { type: "if" }>): string {
-    let out = "";
+    let expression = "";
     for (const branch of node.branches) {
-      if (branch.cond === null) {
-        out += `:${this.emitChildren(branch.body, true)}`;
-      } else {
-        const guard = `(${this.safe(branch.cond, "false")})?${this.emitChildren(branch.body, true)}`;
-        out += out === "" ? guard : `:${guard}`;
-      }
+      const children = this.emitChildren(branch.body, true);
+      const body = children.length ? assembleRoot(children, []) : "null";
+      if (branch.cond === null) return `${expression}${body}`;
+      const condition = this.safe(branch.cond, "false");
+      expression += `(${condition})?${body}:`;
     }
-    if (!node.branches.some((b) => b.cond === null)) out += ":null";
-    return out;
+    return `${expression}null`;
   }
 
   private emitEach(node: Extract<DilNode, { type: "each" }>): string {
-    const body = this.emitChildren(node.body, true);
+    const body = this.emitChildren(node.body, true).join(",");
     const roots = node.body.filter((child) => child.type !== "stmt");
     const rendered = roots.length > 1 ? `__dil.jsx(__dil.Fragment,null,${body})` : body;
     return this.safe(`(${node.list}).map((${node.pattern})=>${this.safe(rendered, "null")})`, "[]");
@@ -369,7 +375,7 @@ class Serializer {
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
     props.push(`"__resolutionId":${this.takeId()}`);
-    const children = this.emitChildren(node.children, false, true);
+    const children = this.emitChildParts(node.children, true).join(",");
     const call = `__dil.jsx(${node.name},{${props.join(",")}}${children ? `,${children}` : ""})`;
     return this.safe(call, "null");
   }
@@ -378,7 +384,7 @@ class Serializer {
     const attrs =
       node.name === "math"
         ? [...node.attrs].sort((a, b) => (a.name === "block" ? -1 : b.name === "block" ? 1 : 0))
-        : node.name === "title"
+        : node.name === "title" && (!node.synthetic || !this.includeMarkdownHeadingLevels)
           ? node.attrs.filter((a) => a.name !== "level")
           : node.attrs;
     const props: string[] = [];
@@ -405,7 +411,7 @@ class Serializer {
       singleDynamicChild,
       node.name !== "table-cell" && !listMarker,
       node.name === "list-item",
-    );
+    ).join(",");
     if (node.name === "table-cell") this.cellDepth--;
     if (node.name === "svg") this.svgDepth--;
     const body =

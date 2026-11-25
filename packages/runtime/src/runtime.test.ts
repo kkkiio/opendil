@@ -77,8 +77,6 @@ test("streaming and recreating the runner preserve state while a fresh page star
 });
 
 test("a streamed state declaration only initializes its slot when it is complete", () => {
-  // A half-arrived statement is not runnable code, so the load fails and the engine keeps
-  // its previous tree; once the statement closes, its slot initializes.
   assert.throws(() => load("{@body const [n, setN] = DIL.useState( }<text>{n}</text>").result);
   assert.deepEqual(load("{@body const [n, setN] = DIL.useState(5)}<text>{n}</text>").result.state, { n: 5 });
 });
@@ -120,4 +118,30 @@ test("button intent follows the current state and calls through aliases", () => 
   assert.equal(after.probe(ready.buttons[0]), true);
   assert.deepEqual(active.result.effects, []);
   assert.deepEqual(active.fire("button", "onClick").effects, ["continue"]);
+});
+
+test("the visible button still works when a new revision fails to load", () => {
+  const executor = createExecutor();
+  const session = load(card, executor);
+  const artifact = artifactOf(card);
+  for (const code of ["const broken =", 'throw new Error("broken revision")']) {
+    assert.throws(() => executor.load({ ...artifact, code, constants: {} }));
+    session.fire("button", "onClick");
+  }
+  assert.equal(session.result.state.count, 2);
+});
+
+test("a failed interaction leaves the visible controls available", () => {
+  const executor = createExecutor();
+  const session = load(
+    [
+      "{@body const [broken, setBroken] = DIL.useState(false)}",
+      '{@body if (broken) throw new Error("broken render")}',
+      "<button onClick={() => setBroken(true)}>Try again</button>",
+      '<button onClick={() => GenUI.issueNewTurn("continue")}>Continue</button>',
+    ].join("\n"),
+    executor,
+  );
+  assert.equal(executor.trigger(session.result.buttons[0]), null);
+  assert.deepEqual(session.fire("button", "onClick", [], 1).effects, ["continue"]);
 });

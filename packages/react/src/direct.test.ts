@@ -100,3 +100,13 @@ test("a multi-field form gets a submit path: buttons inside a form are submit bu
   const outside = renderToString(createElement(DilRenderer, { source: "<button>提交</button>", execution: "direct" }));
   assert.match(outside, /type="button"/);
 });
+
+test("Markdown headings preserve all six levels in the page outline", () => {
+  const source = Array.from({ length: 6 }, (_, index) => `${"#".repeat(index + 1)} Section ${index + 1}`).join("\n\n");
+  for (const isStreaming of [true, false]) {
+    const html = renderToString(createElement(DilRenderer, { source, isStreaming, execution: "direct" }));
+    for (let level = 1; level <= 6; level++) {
+      assert.match(html, new RegExp(`<h${level}[^>]*>Section ${level}</h${level}>`));
+    }
+  }
+});

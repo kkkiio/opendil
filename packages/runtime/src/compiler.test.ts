@@ -25,8 +25,6 @@ test("large plain Markdown evaluates intact up to the transfer budget", () => {
 test("nested loops cannot expand without bound", () => {
   const source =
     "{#each Array.from({ length: 400 }) as r}{#each Array.from({ length: 400 }) as c}<text>x</text>{/each}{/each}";
-  // 400 × 400 = 160k nodes overflows the executor's tree budget, so the load fails and
-  // the engine keeps its previous tree rather than hanging or exhausting memory.
   assert.throws(() => createExecutor().load(compileDil(parseDocument(source))));
 });
 
@@ -92,7 +90,6 @@ test("interpolation formats values and drops the empty ones", () => {
   assert.equal(text(nodes), "共 3 项ab 完成");
   const [span] = find(nodes, "text");
   assert.ok(span && span.kind === "element");
-  // Numbers become text nodes, an empty string vanishes, and an array is flattened.
   assert.deepEqual(
     span.children.map((child) => (child.kind === "text" ? child.value : "?")),
     ["共 ", "3", " 项", "a", "b", " 完成"],
@@ -100,8 +97,6 @@ test("interpolation formats values and drops the empty ones", () => {
 });
 
 test("attributes resolve in all four forms, with undefined on failure", () => {
-  // A bare flag, a quoted string, an object literal (constant-table reference) and an
-  // inline expression are the four forms the compiler lowers into jsx props.
   const [box] = find(resolved("{@body const n = 3}<box border radius='lg' data={{ a: 1 }} gap={n}>x</box>"), "box");
   assert.ok(box && box.kind === "element");
   assert.equal(box.props.border, true);
@@ -109,12 +104,10 @@ test("attributes resolve in all four forms, with undefined on failure", () => {
   assert.deepEqual(box.props.data, { a: 1 });
   assert.equal(box.props.gap, 3);
 
-  // An expression that evaluates to undefined drops the prop but keeps the element.
   const [kept] = find(resolved("<box gap={undefined}>y</box>"), "box");
   assert.ok(kept && kept.kind === "element");
   assert.equal(kept.props.gap, undefined);
 
-  // One that throws takes the guarded element with it.
   assert.equal(find(resolved("<box gap={oops.missing.x}>y</box>"), "box").length, 0);
 });
 
@@ -125,8 +118,6 @@ test("a broken expression never removes its siblings", () => {
 });
 
 test("fences become widget contracts and display math elements", () => {
-  // A fenced block is no longer lowered to a code-block element: it compiles to a widget
-  // contract whose null slot resolves to the client widget placeholder.
   const [widget] = find(resolved("```js\nconst a = 1\n```"), "__clientDefinedWidget");
   assert.ok(widget && widget.kind === "element");
 
@@ -168,9 +159,6 @@ test("a real DIL sample renders its each over inline data", () => {
 });
 
 test("an unclosed streaming fence compiles to a widget placeholder", () => {
-  // The wire tree no longer carries a `closed` flag: a half-arrived fence compiles to the
-  // same widget contract as a closed one. (The stream-frame corpus still has to confirm
-  // this end to end.)
   const [widget] = find(resolved("```js\nconst a = 1"), "__clientDefinedWidget");
   assert.ok(widget && widget.kind === "element");
 });
@@ -183,4 +171,34 @@ test("each supports array and object destructuring with optional index", () => {
   const objSource =
     '{#each [{ name: "a", pct: "10%" }, { name: "b" }] as { name: label, pct = "0%" }}<text>{label}={pct}|</text>{/each}';
   assert.equal(text(resolved(objSource)), "a=10%|b=0%|");
+});
+
+test("a conditional renders all children of the active branch", () => {
+  const nodes = resolved(
+    [
+      "{#if false}<text>Ignored</text><text>Hidden</text>",
+      "{:else if false}",
+      "{:else}<text>First</text><text>Second</text>{/if}",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    nodes.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [
+      { kind: "text", value: "First" },
+      { kind: "text", value: "Second" },
+    ],
+  );
+});
+
+test("a body can declare several values and state slots", () => {
+  const nodes = resolved(
+    [
+      '{@body const first = "A;B"; const second = "C", third = "D"; const [saved] = DIL.useState("E")}',
+      "<text>{first + second + third + saved}</text>",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    nodes.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [{ kind: "text", value: "A;BCDE" }],
+  );
 });

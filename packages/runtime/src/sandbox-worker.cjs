@@ -43,15 +43,10 @@
    *  handlers. `load` takes `{ code, constants, appData }`; `trigger` replays an event. */
   function createExecutor(initialState = {}) {
     let slots = new Map(Object.entries(initialState));
-    let compiled;
-    let constants;
-    let appData;
     let handlers = new Map();
-    let buttons = [];
     let artifact;
     let effects;
     let updating = false;
-    let anonymous = 0;
 
     const GenUI = Object.freeze({
       issueNewTurn(value) {
@@ -59,53 +54,52 @@
         if (effects && prompt && prompt.length <= MAX_TEXT && effects.length === 0) effects.push(prompt);
       },
     });
-    const DIL = {
-      Fragment: Symbol("fragment"),
-      jsx(type, props, ...children) {
-        if (typeof type === "function") return type();
-        return { type, props: props ?? {}, children };
-      },
-      render(node) {
-        DIL.__root = node;
-      },
-      useConstants() {
-        return constants;
-      },
-      useAppData(select) {
-        return select ? select(appData) : appData;
-      },
-      useState(initial, options) {
-        const slot = typeof options?.key === "string" ? options.key : `anonymous:${anonymous++}`;
-        if (!slots.has(slot)) slots.set(slot, initial);
-        return [
-          slots.get(slot),
-          (next) => {
-            if (!updating) return;
-            const previous = slots.get(slot);
-            const value = typeof next === "function" ? next(previous) : next;
-            if (!Object.is(value, previous)) slots.set(slot, value);
-          },
-        ];
-      },
-      __root: undefined,
-      __safeError() {
-        DIL.__errors += 1;
-      },
-      __errors: 0,
-    };
-
     function resolve(artifact) {
-      anonymous = 0;
-      DIL.__errors = 0;
-      DIL.__root = undefined;
-      handlers = new Map();
-      buttons = [];
+      const nextHandlers = new Map();
+      const buttons = [];
+      const constants = artifact.constants ?? {};
+      const appData = artifact.appData ?? {};
+      let anonymous = 0;
+      const DIL = {
+        Fragment: Symbol("fragment"),
+        jsx(type, props, ...children) {
+          if (typeof type === "function") return type();
+          return { type, props: props ?? {}, children };
+        },
+        render(node) {
+          DIL.__root = node;
+        },
+        useConstants() {
+          return constants;
+        },
+        useAppData(select) {
+          return select ? select(appData) : appData;
+        },
+        useState(initial, options) {
+          const slot = typeof options?.key === "string" ? options.key : `anonymous:${anonymous++}`;
+          if (!slots.has(slot)) slots.set(slot, initial);
+          return [
+            slots.get(slot),
+            (next) => {
+              if (!updating) return;
+              const previous = slots.get(slot);
+              const value = typeof next === "function" ? next(previous) : next;
+              if (!Object.is(value, previous)) slots.set(slot, value);
+            },
+          ];
+        },
+        __root: undefined,
+        __safeError() {
+          DIL.__errors += 1;
+        },
+        __errors: 0,
+      };
       const budget = { nodes: LIMIT * 8, text: MAX_TEXT };
       let nodes = LIMIT;
       const body = artifact.code.startsWith(SAFE_PRELUDE)
         ? COUNTING_PRELUDE + artifact.code.slice(SAFE_PRELUDE.length)
         : artifact.code;
-      compiled = new NativeFunction(
+      const compiled = new NativeFunction(
         "DIL",
         "GenUI",
         "__dil",
@@ -129,8 +123,8 @@
         const props = Object.create(null);
         for (const [name, prop] of Object.entries(node.props ?? {})) {
           if ((name === "onClick" || name === "onChange" || name === "onSubmit") && typeof prop === "function") {
-            const id = `h${handlers.size}`;
-            handlers.set(id, prop);
+            const id = `h${nextHandlers.size}`;
+            nextHandlers.set(id, prop);
             props[name] = { id };
             if (node.type === "button" && name === "onClick") buttons.push(id);
             continue;
@@ -150,18 +144,17 @@
       const tree = convert(DIL.__root, 0);
       if (!isArray(tree)) throw new Error("DIL artifact did not render a tree");
       const state = sanitize(Object.fromEntries(slots), budget);
-      return { tree, handlers, buttons, state, errors: DIL.__errors };
+      return { tree, handlers: nextHandlers, buttons, state, errors: DIL.__errors };
     }
 
     return {
-      load(next) {
-        artifact = next;
-        constants = artifact.constants ?? {};
-        appData = artifact.appData ?? {};
+      load(nextArtifact) {
         const before = new Map(slots);
         try {
-          const next = resolve(artifact);
-          return { tree: next.tree, buttons: next.buttons, state: next.state, effects: [], errors: next.errors };
+          const { tree, buttons, state, errors, handlers: nextHandlers } = resolve(nextArtifact);
+          artifact = nextArtifact;
+          handlers = nextHandlers;
+          return { tree, buttons, state, effects: [], errors };
         } catch (error) {
           slots = before;
           throw error;
@@ -181,17 +174,19 @@
         return recorded.length > 0;
       },
       trigger(id, args = []) {
-        if (!compiled || !handlers.has(id)) return null;
+        const handler = handlers.get(id);
+        if (!artifact || !handler) return null;
         const before = new Map(slots);
         const performed = [];
         effects = performed;
         updating = true;
         try {
-          handlers.get(id)(...args);
+          handler(...args);
           updating = false;
           effects = undefined;
-          const next = resolve(artifact);
-          return { tree: next.tree, buttons: next.buttons, state: next.state, effects: performed, errors: next.errors };
+          const { tree, buttons, state, errors, handlers: nextHandlers } = resolve(artifact);
+          handlers = nextHandlers;
+          return { tree, buttons, state, effects: performed, errors };
         } catch {
           slots = before;
           return null;
