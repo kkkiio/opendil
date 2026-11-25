@@ -6,10 +6,8 @@
  * also rendered as UI. Nothing is evaluated: dynamic interpolations disappear, and an
  * `{#if}` contributes its `{:else}` branch — the state a reader sees before interacting.
  *
- * Platform references travel as private-use markers rather than Markdown syntax
- * (citations, links, entities, image queries), so the projection round-trips them the
- * way the client stores them. Prose is escaped where a bare character would otherwise
- * read as Markdown syntax.
+ * Platform references such as citations, entities and image queries retain their markers.
+ * Prose is escaped where a bare character would read as Markdown syntax.
  */
 
 import type { DilElementNode, DilNode } from "./types.ts";
@@ -18,6 +16,7 @@ interface RenderContext {
   readonly listDepth: number;
   /** Table cells are not blocks: a cell that opens with `1.` is not a list. */
   readonly inTableCell?: boolean;
+  readonly inLinkLabel?: boolean;
 }
 
 /** Private-use delimiters the reference wraps platform references in: citations, links,
@@ -49,19 +48,19 @@ function renderNodes(nodes: DilNode[], ctx: RenderContext): string {
   let previousWasTitle = false;
   for (const node of nodes) {
     switch (node.type) {
-      case "text":
-        out += escapeProse(node.value, (out === "" || out.endsWith("\n")) && ctx.inTableCell !== true);
+      case "text": {
+        const literal = ctx.inLinkLabel ? node.value.replace(/[\\[\]]/g, "\\$&") : node.value;
+        out += escapeProse(literal, (out === "" || out.endsWith("\n")) && ctx.inTableCell !== true);
         previousWasTextBlock = false;
         break;
+      }
       case "stmt":
       case "expr":
         previousWasTextBlock = false;
         break;
       case "fence":
         out +=
-          node.kind === "math"
-            ? `\n\n\\[\n${node.value}\n\\]\n\n`
-            : `\n\n\`\`\`${node.info}\n${node.value}\n\`\`\`\n\n`;
+          node.kind === "math" ? `\n\n$$\n${node.value}\n$$\n\n` : `\n\n\`\`\`${node.info}\n${node.value}\n\`\`\`\n\n`;
         previousWasTextBlock = false;
         break;
       case "if": {
@@ -124,7 +123,7 @@ function renderElement(node: DilElementNode, ctx: RenderContext): string {
     case "math": {
       const value = attributeValue(node, "value") ?? inner();
       if (!value) return "";
-      return hasAttribute(node, "block") ? `\n\n\\[\n${value}\n\\]\n\n` : `$${value}$`;
+      return hasAttribute(node, "block") ? `\n\n$$\n${value}\n$$\n\n` : `$${value}$`;
     }
     case "code-block":
     case "CodeBlock": {
@@ -152,9 +151,15 @@ function renderElement(node: DilElementNode, ctx: RenderContext): string {
     case "table-row":
       return inner();
     case "Link": {
-      const target = attributeValue(node, "url") ?? attributeValue(node, "ref") ?? "";
-      const title = attributeValue(node, "title") ?? inner() ?? target;
-      return marker("url", [title, target]);
+      const target = attributeValue(node, "url")?.trim();
+      const title = attributeValue(node, "title");
+      const text = renderNodes(node.children, { ...ctx, inLinkLabel: true }).trim();
+      const label = text || (title || target || "").replace(/[\\[\]]/g, "\\$&");
+      if (!target) return label;
+      const escapedTarget = target.replace(/[\\<>]/g, "\\$&");
+      const destination = /[\s<>]/.test(target) ? `<${escapedTarget}>` : escapedTarget.replace(/[()]/g, "\\$&");
+      const escapedTitle = title?.replace(/[\\"]/g, "\\$&");
+      return `[${label}](${destination}${escapedTitle ? ` "${escapedTitle}"` : ""})`;
     }
     case "Cite": {
       const refs = citationRefs(node);
@@ -190,9 +195,11 @@ function renderElement(node: DilElementNode, ctx: RenderContext): string {
       ]);
     }
     case "input":
-      return fieldPlaceholder("输入框占位文本", node);
-    case "textarea":
-      return fieldPlaceholder("多行文本框占位文本", node);
+    case "textarea": {
+      const placeholder = node.attrs.find((attribute) => attribute.name === "placeholder");
+      if (placeholder?.kind !== "string" || typeof placeholder.value !== "string") return "";
+      return escapeProse(placeholder.value.replace(/[\\*[\]`<>]/g, "\\$&"), true);
+    }
     case "badge":
       return inner() ? `(${inner()})` : "";
     case "button": {
@@ -291,13 +298,6 @@ function isInlineAtom(node: DilNode): boolean {
   return node.type === "text" || node.type === "expr" || (node.type === "element" && INLINE_TAGS.has(node.name));
 }
 
-/** The reference names an unevaluated form control by its placeholder and says so. */
-function fieldPlaceholder(label: string, node: DilElementNode): string {
-  const placeholder = attributeValue(node, "placeholder") ?? "";
-  const suffix = hasAttribute(node, "value") ? "（当前值不可用。）" : "";
-  return `[${label}：${placeholder}]${suffix}`;
-}
-
 /** `<Cite ref="x"/>` / `<Cite refs={["x","y"]}/>`: the reference ids it cites, in order. */
 function citationRefs(node: DilElementNode): string[] {
   const single = attributeValue(node, "ref");
@@ -366,19 +366,20 @@ function renderTable(node: DilElementNode, ctx: RenderContext): string {
   );
   if (!rows.length) return "";
 
-  const rendered = rows.map((row) => {
-    const cells = row.children
-      .filter((child): child is DilElementNode => child.type === "element" && child.name === "table-cell")
-      .map((cell) =>
-        renderNodes(cell.children, { ...ctx, inTableCell: true })
-          .trim()
-          .replace(/\s*\n\s*/g, " ")
-          .replace(/\|/g, "\\|"),
-      );
-    return `| ${cells.join(" | ")} |`;
+  const cells = rows.map((row) =>
+    row.children.filter((child): child is DilElementNode => child.type === "element" && child.name === "table-cell"),
+  );
+  const rendered = cells.map((row) => {
+    const contents = row.map((cell) =>
+      renderNodes(cell.children, { ...ctx, inTableCell: true })
+        .trim()
+        .replace(/\s*\n\s*/g, " ")
+        .replace(/\|/g, "\\|"),
+    );
+    return `| ${contents.join(" | ")} |`;
   });
 
-  const columns = Math.max(1, rendered[0].split("|").length - 2);
+  const columns = Math.max(1, cells[0].length);
   rendered.splice(1, 0, `|${Array.from({ length: columns }, () => "--------").join("|")}|`);
   return `\n\n${rendered.join("\n")}\n\n`;
 }

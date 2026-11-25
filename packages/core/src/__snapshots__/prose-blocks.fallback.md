@@ -14,9 +14,9 @@
 
 排队长度只取决于到达率与停留时间：
 
-\[
+$$
 Q = \lambda W
-\]
+$$
 
 ```bash
 hey -z 30s -c 50 https://example.com/api
@@ -26,4 +26,4 @@ hey -z 30s -c 50 https://example.com/api
 
 *采样窗口*短于一次发布的观察期，所以这组数字只对当前版本成立。
 
-压测脚本见 url压测脚本https://example.com/bench。
+压测脚本见 [示例仓库](https://example.com/bench "压测脚本")。
