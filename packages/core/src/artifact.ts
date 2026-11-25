@@ -5,12 +5,13 @@
  *
  * Every emission rule is corpus-derived and enforced by the artifact-diff oracle
  * (`conformance/artifact.test.ts`): guard placement, when the `__dilSafe` prelude is
- * emitted, constant allocation order, the prose-run wrapping, the single-root body shape
- * (no `Fragment` around one root), widget contracts for fenced blocks, host-tag
- * resolution ids, and statement key injection. Platform facts the compiler cannot derive
- * from source arrive as options: the internal widget tag name, an id factory (the platform
- * allocates one id per fence or host tag, in document order), and the DIL block's position
- * in the message.
+ * emitted, constant allocation order, the prose-run wrapping (a run of components carries
+ * no `text`), the single-root body shape (no `Fragment` around one root), which host tags
+ * resolve to a component call and which degrade to text, widget contracts for fenced
+ * blocks, host-tag resolution ids, and statement key injection. Platform facts the
+ * compiler cannot derive from source arrive as options: the internal widget tag name, an
+ * id factory (the platform allocates one id per fence or host tag, in document order), and
+ * the DIL block's position in the message.
  */
 
 import { toFallbackMarkdown } from "./fallback.ts";
@@ -75,6 +76,22 @@ const HOST_TAGS = new Set(["Cite", "Link", "Entity", "AsyncImage", "AsyncImageGr
 
 /** String props the reference compiler allocates into the constants table. */
 const CONTENT_PROPS = new Set(["math.value", "Entity.value", "textarea.placeholder", "input.placeholder"]);
+
+/** Inline tags Markdown itself produces (`**x**`, `` `x` ``, `[x](y)`); a run of these is
+ * prose wherever it appears. */
+const MARKDOWN_INLINE_TAGS = new Set(
+  Object.entries(DIL_VOCABULARY as Record<string, { kind?: string; lowered?: true }>)
+    .filter(([, entry]) => entry.kind === "inline" && entry.lowered === true)
+    .map(([name]) => name),
+);
+
+/** Inline tags only the model writes: a run of these carries no prose, so it is emitted
+ * as its elements instead of a `text`. */
+const STANDALONE_INLINE_TAGS = new Set(
+  Object.entries(DIL_VOCABULARY as Record<string, { kind?: string; source?: true; lowered?: true }>)
+    .filter(([, entry]) => entry.kind === "inline" && entry.source === true && entry.lowered !== true)
+    .map(([name]) => name),
+);
 
 const NUMBER = /^-?\d+(?:\.\d+)?$/;
 const SVG_TAGS = new Set(["rect", "path", "text", "line", "marker"]);
@@ -164,6 +181,15 @@ class Serializer {
     };
   }
 
+  /** A paragraph whose whole content is one model-written component carries no prose, so
+   * that component stands on its own rather than being wrapped in a `text`. */
+  private isElementOnlyParagraph(node: DilElementNode): boolean {
+    if (node.synthetic !== true || node.name !== "text") return false;
+    if (node.children.length !== 1) return false;
+    const child = node.children[0];
+    return child.type === "element" && STANDALONE_INLINE_TAGS.has(child.name);
+  }
+
   private emitChildParts(nodes: readonly DilNode[], rawExpr: boolean): string[] {
     const parts: string[] = [];
     for (const node of nodes) {
@@ -191,7 +217,8 @@ class Serializer {
         .map((n) => this.emitNode(n, rawExpr))
         .filter(Boolean)
         .join(",");
-      parts.push(`__dil.jsx("text",null,${inner})`);
+      const prose = run.some((n) => n.type === "text" || n.type === "expr" || this.isMarkdownInline(n));
+      parts.push(prose ? `__dil.jsx("text",null,${inner})` : inner);
       run = [];
     };
     for (const node of nodes) {
@@ -204,6 +231,10 @@ class Serializer {
     }
     flush();
     return parts.join(",");
+  }
+
+  private isMarkdownInline(node: DilNode): boolean {
+    return node.type === "element" && MARKDOWN_INLINE_TAGS.has(node.name);
   }
 
   private isProseAtom(node: DilNode): boolean {
@@ -233,10 +264,28 @@ class Serializer {
       case "each":
         return this.emitEach(node);
       case "element":
+        if (this.isElementOnlyParagraph(node)) return this.emitNode(node.children[0], rawExpr);
         if (node.name === "code-block") return this.emitWidget();
-        if (HOST_TAGS.has(node.name)) return this.emitHostTag(node);
+        if (HOST_TAGS.has(node.name)) {
+          return this.resolvable(node) ? this.emitHostTag(node) : this.emitDegradedHostTag(node);
+        }
         return this.emitElement(node);
     }
+  }
+
+  /** Whether a host tag carries the props its client component needs to resolve at all;
+   * an `Entity` without a `disambig` hint has nothing to show, so it is not a component. */
+  private resolvable(node: DilElementNode): boolean {
+    if (node.name !== "Entity") return true;
+    return node.attrs.some((attr) => attr.name === "disambig");
+  }
+
+  /** A host tag that cannot resolve degrades to a `text` element holding its label, in
+   * place of the component call it would otherwise emit. */
+  private emitDegradedHostTag(node: DilElementNode): string {
+    const value = node.attrs.find((attr) => attr.name === "value");
+    if (!value || value.kind !== "string") return "";
+    return `__dil.jsx("text",null,${this.alloc(value.value)})`;
   }
 
   private emitIf(node: Extract<DilNode, { type: "if" }>): string {
@@ -299,7 +348,7 @@ class Serializer {
           ? node.attrs.filter((a) => a.name !== "level")
           : node.attrs;
     const props: string[] = [];
-    let dynamic = false;
+    let attrsDynamic = false;
     for (const attr of attrs) {
       if (attr.kind === "string" && CONTENT_PROPS.has(`${node.name}.${attr.name}`)) {
         props.push(`${JSON.stringify(attr.name)}:${this.alloc(attr.value)}`);
@@ -307,13 +356,19 @@ class Serializer {
       }
       const inSvg = node.name === "svg" || (this.svgDepth > 0 && SVG_TAGS.has(node.name));
       const emitted = inSvg ? this.emitSvgProp(attr) : this.emitProp(attr);
-      if (emitted.dynamic) dynamic = true;
+      if (emitted.dynamic) attrsDynamic = true;
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
-    if (node.children.some((child) => child.type === "expr")) dynamic = true;
+    const childrenDynamic = node.children.some((child) => child.type === "expr");
+    const dynamic = attrsDynamic || childrenDynamic;
     const raw = RAW_CHILD_TAGS.has(node.name);
     if (node.name === "svg") this.svgDepth++;
-    const children = this.emitChildren(node.children, !raw, dynamic, node.name !== "table-cell");
+    const children = this.emitChildren(
+      node.children,
+      !raw,
+      childrenDynamic && !attrsDynamic,
+      node.name !== "table-cell",
+    );
     if (node.name === "svg") this.svgDepth--;
     const propsText = props.length > 0 ? `{${props.join(",")}}` : "null";
     const call = `__dil.jsx(${JSON.stringify(node.name)},${propsText}${children ? `,${children}` : ""})`;
@@ -333,6 +388,7 @@ class Serializer {
     if (attr.kind === "string") return { text: JSON.stringify(attr.value), dynamic: false };
     const code = attr.value as string;
     if (NUMBER.test(code)) return { text: code, dynamic: false };
+    if (attr.kind === "raw") return { text: JSON.stringify(code), dynamic: false };
     if (code.startsWith("{") || code.startsWith("[")) {
       try {
         return { text: this.alloc(JSON.parse(jsonifyLiteral(code))), dynamic: false };
