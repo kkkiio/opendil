@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileDil, type DilHandler, parseDocument, type ResolvedNode } from "@kkkiio/dil-core";
+import { compileDil, type DilHandler, MAX_DIL_DEPTH, parseDocument, type ResolvedNode } from "@kkkiio/dil-core";
 import { createExecutor } from "./sandbox-worker.cjs";
 
 const card = [
@@ -160,4 +160,37 @@ test("state recovery uses the authored key when the call provides options", () =
   const source = '{@body const [count] = DIL.useState /* options */ (0, { key: "saved" })}\n<text>{count}</text>';
   const session = load(source, createExecutor({ saved: 8 }));
   assert.deepEqual(session.result.state, { saved: 8 });
+});
+
+test("an outdated click cannot trigger a control on a newer card", () => {
+  const executor = createExecutor();
+  const initial = executor.load(
+    artifactOf(
+      [
+        "{@body const [count, setCount] = DIL.useState(0)}",
+        "{#if count > 0}<button onClick={() => setCount(0)}>Reset</button>{/if}",
+        "<button onClick={() => setCount(count + 1)}>Increment</button>",
+      ].join("\n"),
+    ),
+  );
+  const first = executor.trigger(initial.buttons[0]);
+  assert.ok(first);
+  assert.equal(first.state.count, 1);
+  assert.equal(executor.trigger(initial.buttons[0]), null);
+  const second = executor.trigger(first.buttons[1]);
+  assert.ok(second);
+  assert.equal(second.state.count, 2);
+});
+
+test("a deeply nested tree renders up to the tree depth limit", () => {
+  const executor = createExecutor();
+  const cardAt = (depth: number) =>
+    artifactOf(
+      `${"<box>".repeat(depth - 1)}<button onClick={() => GenUI.issueNewTurn("Keep going")}>Continue</button>${"</box>".repeat(depth - 1)}`,
+    );
+  const result = executor.load(cardAt(MAX_DIL_DEPTH));
+  assert.equal(find(result.tree, "box").length, MAX_DIL_DEPTH - 1);
+  assert.equal(find(result.tree, "button").length, 1);
+  assert.throws(() => executor.load(cardAt(MAX_DIL_DEPTH + 1)), /depth limit/);
+  assert.deepEqual(executor.trigger(result.buttons[0])?.effects, ["Keep going"]);
 });

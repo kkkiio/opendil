@@ -40,7 +40,7 @@ export class DirectRuntime {
       this.artifact = artifact;
       this.snapshot = { tree: result.tree, errors: result.errors };
       this.state = readViewState(result.state);
-      this.probeIntents(artifact, result.state, result.buttons);
+      this.probeIntents(artifact, result.renderId, result.state, result.buttons);
       return this.snapshot;
     } catch {
       return undefined;
@@ -65,7 +65,7 @@ export class DirectRuntime {
       this.onViewStateChange({ root: nextState });
     } else this.state = nextState;
     this.onTree(this.snapshot.tree, this.snapshot.errors);
-    this.probeIntents(artifact, result.state, result.buttons);
+    this.probeIntents(artifact, result.renderId, result.state, result.buttons);
     const prompt = typeof result.effects[0] === "string" ? result.effects[0].trim() : "";
     const host = prompt ? this.getHost() : null;
     if (!host || host.busy) return Promise.resolve();
@@ -76,13 +76,18 @@ export class DirectRuntime {
   setVisible(_visible: boolean): void {}
   stop(): void {}
 
-  private probeIntents(artifact: CompiledArtifact, state: Record<string, unknown>, buttons: readonly string[]): void {
+  private probeIntents(
+    artifact: CompiledArtifact,
+    renderId: number,
+    state: Record<string, unknown>,
+    buttons: readonly string[],
+  ): void {
     this.onIntents(
       new Set(
         buttons.filter((id) => {
           try {
             const specimen = createExecutor(structuredClone(readViewState(state)));
-            specimen.load(artifact);
+            specimen.load(artifact, renderId);
             return specimen.probe(id);
           } catch {
             return false;

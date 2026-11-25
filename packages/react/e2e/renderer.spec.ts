@@ -32,8 +32,12 @@ for (const mode of ["sandbox", "direct"]) {
     await expect(page.locator("p").filter({ hasText: "Tips:" })).toBeVisible();
     await expect(page.locator("p del")).toHaveText("Old guide");
     await expect(page.locator("pre").getByText("Inventory example")).toBeVisible();
-    await page.getByRole("button", { name: "Check item" }).click();
+    await page.getByRole("button", { name: "Check item" }).evaluate((button) => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
     await expect(page.getByText("Checked items: 1")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reset count" })).toBeVisible();
 
     await page.getByRole("button", { name: "More output" }).click();
     await expect(page.getByText("Checking the inventory")).toBeVisible();

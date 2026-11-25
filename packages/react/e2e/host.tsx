@@ -6,6 +6,7 @@ import { DilRenderer } from "../dist/index.js";
 const first = [
   "{@body const [count, setCount] = DIL.useState(0)}",
   "<text>Checked items: {count}</text>",
+  "{#if count > 0}<button onClick={() => setCount(0)}>Reset count</button>{/if}",
   "<button onClick={() => setCount(count + 1)}>Check item</button>",
   "",
   "Tips: ~~Old guide~~ [Guide](./guide)",

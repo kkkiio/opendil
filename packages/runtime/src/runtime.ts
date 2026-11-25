@@ -170,7 +170,7 @@ export class DilSandbox {
         this.pump();
         return;
       }
-      request = { ...event.request, revision: this.loaded };
+      request = event.request;
       dispatched = this.events.shift();
     } else if (this.desired.revision > this.attempted) {
       request = { ...this.desired, kind: "load" };

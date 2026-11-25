@@ -1,5 +1,6 @@
 (() => {
   const LIMIT = 5_000;
+  const MAX_TREE_DEPTH = 64;
   const MAX_TEXT = 1_000_000;
   const NativeFunction = Function;
   const copy = structuredClone;
@@ -47,6 +48,7 @@
     let artifact;
     let effects;
     let updating = false;
+    let renderSequence = 0;
 
     const GenUI = Object.freeze({
       issueNewTurn(value) {
@@ -54,7 +56,9 @@
         if (effects && prompt && prompt.length <= MAX_TEXT && effects.length === 0) effects.push(prompt);
       },
     });
-    function resolve(artifact) {
+    function resolve(artifact, requestedRenderId = 0) {
+      const renderId = Math.max(renderSequence + 1, requestedRenderId);
+      renderSequence = renderId;
       const nextHandlers = new Map();
       const buttons = [];
       const constants = artifact.constants ?? {};
@@ -107,25 +111,26 @@
         `"use strict";\n${body}`,
       );
       const convert = (value, depth) => {
+        if (depth > MAX_TREE_DEPTH) throw new Error("DIL tree exceeds its depth limit");
         if (value == null || typeof value === "boolean" || typeof value === "function") return [];
         if (typeof value === "string" || typeof value === "number") {
-          if (--nodes < 0 || depth > 16) throw new Error("DIL tree exceeds its node budget");
+          if (--nodes < 0) throw new Error("DIL tree exceeds its node budget");
           budget.text -= String(value).length;
           if (budget.text < 0) throw new Error("DIL tree exceeds its text budget");
           return value === "" ? [] : [{ kind: "text", value: String(value) }];
         }
         if (isArray(value)) return value.flatMap((item) => convert(item, depth));
-        if (typeof value !== "object" || depth > 16) return [];
+        if (typeof value !== "object") return [];
         const node = value;
         if (node.type === DIL.Fragment) return convert(node.children, depth);
         if (typeof node.type !== "string") return [];
-        if (--nodes < 0 || depth > 16) throw new Error("DIL tree exceeds its node budget");
+        if (--nodes < 0) throw new Error("DIL tree exceeds its node budget");
         const props = Object.create(null);
         const synthetic = node.props?.__dilSynthetic === true;
         for (const [name, prop] of Object.entries(node.props ?? {})) {
           if (name === "__dilSynthetic") continue;
           if ((name === "onClick" || name === "onChange" || name === "onSubmit") && typeof prop === "function") {
-            const id = `h${nextHandlers.size}`;
+            const id = `h${renderId}:${nextHandlers.size}`;
             nextHandlers.set(id, prop);
             props[name] = { id };
             if (node.type === "button" && name === "onClick") buttons.push(id);
@@ -146,17 +151,17 @@
       const tree = convert(DIL.__root, 0);
       if (!isArray(tree)) throw new Error("DIL artifact did not render a tree");
       const state = sanitize(Object.fromEntries(slots), budget);
-      return { tree, handlers: nextHandlers, buttons, state, errors: DIL.__errors };
+      return { tree, handlers: nextHandlers, buttons, state, errors: DIL.__errors, renderId };
     }
 
     return {
-      load(nextArtifact) {
+      load(nextArtifact, renderId) {
         const before = new Map(slots);
         try {
-          const { tree, buttons, state, errors, handlers: nextHandlers } = resolve(nextArtifact);
+          const { handlers: nextHandlers, ...result } = resolve(nextArtifact, renderId);
           artifact = nextArtifact;
           handlers = nextHandlers;
-          return { tree, buttons, state, effects: [], errors };
+          return { ...result, effects: [] };
         } catch (error) {
           slots = before;
           throw error;
@@ -175,7 +180,7 @@
         }
         return recorded.length > 0;
       },
-      trigger(id, args = []) {
+      trigger(id, args = [], renderId) {
         const handler = handlers.get(id);
         if (!artifact || !handler) return null;
         const before = new Map(slots);
@@ -186,9 +191,9 @@
           handler(...args);
           updating = false;
           effects = undefined;
-          const { tree, buttons, state, errors, handlers: nextHandlers } = resolve(artifact);
+          const { handlers: nextHandlers, ...result } = resolve(artifact, renderId);
           handlers = nextHandlers;
-          return { tree, buttons, state, effects: performed, errors };
+          return { ...result, effects: performed };
         } catch {
           slots = before;
           return null;
@@ -224,7 +229,7 @@
           for (const handler of task.buttons) {
             try {
               const specimen = createExecutor(copy(event.data.state));
-              specimen.load(task.artifact);
+              specimen.load(task.artifact, task.id);
               if (specimen.probe(handler)) send({ handler });
             } catch {}
           }
@@ -237,10 +242,10 @@
           let result = null;
           try {
             if (request.kind === "load") {
-              result = program.load(request.artifact);
+              result = program.load(request.artifact, id);
               revision = request.revision;
             } else if (request.kind === "trigger" && request.revision === revision) {
-              result = program.trigger(request.handler, request.args);
+              result = program.trigger(request.handler, request.args, id);
             }
             if (result) result = copy(result);
           } catch {

@@ -1,6 +1,7 @@
 import type { CompiledArtifact, ResolvedNode } from "@kkkiio/dil-core";
 
 export interface DilExecutorResult {
+  readonly renderId: number;
   readonly tree: readonly ResolvedNode[];
   readonly buttons: readonly string[];
   readonly state: Record<string, unknown>;
@@ -9,8 +10,8 @@ export interface DilExecutorResult {
 }
 
 export interface DilExecutor {
-  load(artifact: CompiledArtifact & { appData?: unknown }): DilExecutorResult;
-  trigger(id: string, args?: readonly unknown[]): DilExecutorResult | null;
+  load(artifact: CompiledArtifact & { appData?: unknown }, renderId?: number): DilExecutorResult;
+  trigger(id: string, args?: readonly unknown[], renderId?: number): DilExecutorResult | null;
   probe(id: string): boolean;
 }
 
