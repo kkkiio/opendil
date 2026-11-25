@@ -1,6 +1,6 @@
 {
   "name": "@kkkiio/dil-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React renderer and default primitive catalog for DIL (Dynamic Interface Language)",
   "license": "MIT",
   "type": "module",

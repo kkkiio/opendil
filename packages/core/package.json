@@ -1,6 +1,6 @@
 {
   "name": "@kkkiio/dil-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Parser, compiler, render-tree protocol, and system prompt for DIL (Dynamic Interface Language)",
   "license": "MIT",
   "type": "module",
