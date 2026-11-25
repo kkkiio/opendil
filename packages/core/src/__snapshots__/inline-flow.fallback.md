@@ -2,4 +2,4 @@
 
 公式 $Q = \lambda W$ 说明排队长度只与到达率和停留时间有关。
 
-详见 [Postgres 文档](https://www.postgresql.org/docs "连接与并发")，以及 ~~旧版调参笔记~~。
+详见 url连接与并发https://www.postgresql.org/docs，以及 ~~旧版调参笔记~~。

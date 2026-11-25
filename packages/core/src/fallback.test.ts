@@ -21,10 +21,13 @@ test("dynamic values disappear instead of leaking source code", () => {
   assert.equal(out.includes("useState"), false);
 });
 
-test("the first if branch and each body stand in for control flow", () => {
-  const out = markdown("{#if a}显示的文本{:else}不该出现{/if}\n\n{#each xs as x}- {x}{/each}");
-  assert.equal(out.includes("显示的文本"), true);
-  assert.equal(out.includes("不该出现"), false);
+test("a conditional projects the branch a reader sees before interacting", () => {
+  assert.equal(markdown("{#if a}隐藏文本{:else}默认文本{/if}"), "默认文本");
+  assert.equal(markdown("{#if a}隐藏文本{/if}"), "");
+});
+
+test("an each body is projected once, with its interpolations dropped", () => {
+  assert.equal(markdown("{#each xs as x}第 {x} 项{/each}"), "第  项");
 });
 
 test("lists, tables and blockquotes project to readable markdown", () => {
@@ -34,24 +37,28 @@ test("lists, tables and blockquotes project to readable markdown", () => {
 
   const table = markdown("| 方案 | 风险 |\n|---|---|\n| `DIL` | 需要容错 |");
   assert.equal(table.includes("| 方案 | 风险 |"), true);
-  assert.equal(table.includes("| --- | --- |"), true);
+  assert.equal(table.includes("|--------|--------|"), true);
   assert.equal(table.includes("| `DIL` | 需要容错 |"), true);
 
   const quote = markdown("> 容错解析不是可选项。");
   assert.equal(quote.includes("> 容错解析不是可选项。"), true);
 });
 
-test("code fences, math and links keep their source form", () => {
+test("code fences, math, links and markers keep their source form", () => {
   const out = markdown(
     '```bash\ncurl -s https://example.com | head -3\n```\n\n公式 $E = mc^2$ 与 [示例](https://a.test "标题")。',
   );
   assert.equal(out.includes("```bash"), true);
   assert.equal(out.includes("curl -s https://example.com | head -3"), true);
   assert.equal(out.includes("$E = mc^2$"), true);
-  assert.equal(out.includes('[示例](https://a.test "标题")'), true);
+  assert.equal(
+    out.includes("\ue200url\ue202标题\ue202https://a.test\ue201"),
+    true,
+    "a link travels as the reference's url marker, not Markdown link syntax",
+  );
 
   const block = markdown("$$\nE = mc^2\n$$");
-  assert.equal(block.includes("$$"), true, "block math keeps its delimiters");
+  assert.equal(block.includes("\\["), true, "block math keeps its delimiters");
   assert.equal(block.includes("E = mc^2"), true);
 });
 

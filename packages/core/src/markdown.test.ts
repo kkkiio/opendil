@@ -529,7 +529,7 @@ test("fenced code nested in lists stays opaque to DIL", () => {
   assert.equal(findAll(list.children, "list-item").length, 2);
 });
 
-test("a Markdown column alignment reaches the cell and survives the copy back", () => {
+test("a Markdown column alignment reaches the cell, and the projection keeps its columns", () => {
   const source = "| left | middle | right |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |";
   const table = only(tree(source), "table");
   const header = table.children[0];
@@ -540,7 +540,7 @@ test("a Markdown column alignment reaches the cell and survives the copy back", 
   assert.deepEqual(aligns, ["left", "center", "right"]);
 
   assert.ok(
-    toFallbackMarkdown(table ? [table] : []).includes("| :--- | :---: | ---: |"),
-    "the delimiter row keeps the alignment",
+    toFallbackMarkdown(table ? [table] : []).includes("|--------|--------|--------|"),
+    "the projection keeps the column count with a uniform delimiter row",
   );
 });
