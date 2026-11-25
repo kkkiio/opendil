@@ -82,3 +82,14 @@ test("tidyFallback drops debris but never edits a fenced block", () => {
   assert.equal(tidy.split("\n")[0], "真文字");
   assert.equal(tidy.includes("```\n## %\n---\n```"), true);
 });
+
+test("marker-free lists project as plain paragraphs", () => {
+  assert.equal(
+    markdown('<list marker="none"><list-item>First item</list-item><list-item>Second item</list-item></list>'),
+    "First item\n\nSecond item",
+  );
+});
+
+test("fallback preserves standalone operators in a display equation", () => {
+  assert.equal(markdown("$$\na\n+\nb\n$$"), "\\[\na\n+\nb\n\\]");
+});

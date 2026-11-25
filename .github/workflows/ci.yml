@@ -38,5 +38,11 @@ jobs:
       - name: Typecheck all packages
         run: pnpm typecheck
 
-      - name: Run all tests and the conformance suite
+      - name: Run package tests
         run: pnpm test
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: pnpm test:e2e

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { stringify } from "yaml";
-import { parseDocument, toFallbackMarkdown } from "./index.ts";
+import { compileDil, parseDocument, toFallbackMarkdown } from "./index.ts";
 import type { DilAttribute, DilDiagnostic, DilDocument, DilNode } from "./types.ts";
 
 /**
@@ -53,6 +53,13 @@ for (const file of readdirSync(fixtureDir)
     checkOffsets(document.tree, source.length);
   });
 }
+
+test("inventory compiler artifact snapshot", () => {
+  const source = readFileSync(join(fixtureDir, "inventory.dil.md"), "utf8");
+  const { code, fallbackMarkdown, ...data } = compileDil(parseDocument(source));
+  compare("inventory.compiled.js", `${code}\n`);
+  compare("inventory.compiled.json", `${JSON.stringify({ ...data, fallbackMarkdown }, null, 2)}\n`);
+});
 
 function snapshotOf(document: DilDocument): unknown {
   return {
@@ -135,7 +142,7 @@ function compare(name: string, actual: string): void {
     writeFileSync(path, actual);
     return;
   }
-  assert.ok(existsSync(path), `missing snapshot ${name} — run npm run test:dil:update`);
+  assert.ok(existsSync(path), `missing snapshot ${name} — run pnpm test:update`);
   assert.equal(readFileSync(path, "utf8"), actual, `snapshot ${name} changed`);
 }
 

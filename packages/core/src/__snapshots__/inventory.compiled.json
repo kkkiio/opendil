@@ -1,0 +1,13 @@
+{
+  "constants": {
+    "0": "Inventory check",
+    "1": "Item",
+    "2": "Status",
+    "3": "Cable",
+    "4": "Ready",
+    "5": " Packed"
+  },
+  "requiredComponents": [],
+  "fallbackMarkdownVersion": 1,
+  "fallbackMarkdown": "# Inventory check\n\n| Item | Status |\n|--------|--------|\n| Cable | Ready |\n\nPacked"
+}

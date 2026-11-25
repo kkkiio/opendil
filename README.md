@@ -28,7 +28,7 @@ Open-source reference implementation, formal specification, and public corpus fo
   </button>
   {#if revealed}
     <box background="surface-secondary" radius="md" padding={2}>
-      <text>A serializable `DilProgram` (`script` + `data`) that runs inside `@kkkiio/dil-runtime`.</text>
+      <text>A serializable artifact containing executable JavaScript and its constant table.</text>
     </box>
   {/if}
 </box>
@@ -80,17 +80,13 @@ Customize host design-system primitives (e.g. shadcn/ui `Button`/`Textarea`, Shi
 ### 2. Parse & Compile Anywhere (Node / Edge / Browser)
 
 ```ts
-import { compileDil, parseDocument, toFallbackMarkdown } from "@kkkiio/dil-core";
-import { DIL_SYSTEM_PROMPT } from "@kkkiio/dil-core/prompt";
+import { compileDil, createCompileSession, parseDocument } from "@kkkiio/dil-core";
 
-const doc = parseDocument(source, { isStreaming: false });
-const compiled = compileDil(doc);
+const { code, constants, fallbackMarkdown } = compileDil(parseDocument(source));
 
-// Every document — static or dynamic — compiles to the same shape:
-// `compiled.program` (`{ script, data }`), the executable "DIL JS", plus `compiled.fallback`
-// (the degraded Markdown used while the program cannot run).
-// Where the program is evaluated (build machine, page, or sandbox) is the host's choice.
-const plainMarkdown = toFallbackMarkdown(doc.tree);
+const session = createCompileSession(); // One session per streamed message.
+const first = session.compile("Preparing the inventory…");
+const next = session.compile("Preparing the inventory…\n\n<text>Cable ready.</text>");
 ```
 
 ### 3. Bake DIL into a Static Site (trusted sources)

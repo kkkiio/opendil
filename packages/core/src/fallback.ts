@@ -343,7 +343,8 @@ function renderList(node: DilElementNode, ctx: RenderContext): string {
   const indent = "  ".repeat(ctx.listDepth);
   const start = Number.parseInt(attributeValue(node, "start") ?? "1", 10);
   const lines = items.map((item, index) => {
-    const bullet = marker === "number" ? `${Number.isFinite(start) ? start + index : index + 1}.` : "-";
+    const prefix =
+      marker === "none" ? "" : marker === "number" ? `${Number.isFinite(start) ? start + index : index + 1}. ` : "- ";
     const checked = attributeValue(item, "checked");
     const task = checked === "true" ? "[x] " : checked === "false" ? "[ ] " : "";
     const body = renderNodes(item.children, { listDepth: ctx.listDepth + 1 })
@@ -351,12 +352,12 @@ function renderList(node: DilElementNode, ctx: RenderContext): string {
       .split("\n")
       .filter((line, lineIndex, all) => line.length > 0 || lineIndex < all.length - 1);
     const [first = "", ...rest] = body;
-    const pad = " ".repeat(bullet.length + 1 + task.length);
+    const pad = " ".repeat(prefix.length + task.length);
     const continuation = rest.map((line) => `\n${indent}${pad}${line}`).join("");
-    return `${indent}${bullet} ${task}${first}${continuation}`;
+    return `${indent}${prefix}${task}${first}${continuation}`;
   });
 
-  return `\n\n${lines.join("\n")}\n\n`;
+  return `\n\n${lines.join(marker === "none" ? "\n\n" : "\n")}\n\n`;
 }
 
 function renderTable(node: DilElementNode, ctx: RenderContext): string {
@@ -410,8 +411,14 @@ export function tidyFallback(markdown: string): string {
   const lines = markdown.split("\n");
   const kept: string[] = [];
   let fence: string | null = null;
+  let mathEnd: "\\]" | "$$" | null = null;
 
   for (const line of lines) {
+    if (mathEnd) {
+      kept.push(line);
+      if (line.trim() === mathEnd) mathEnd = null;
+      continue;
+    }
     if (fence) {
       kept.push(line);
       if (line.trim() === fence) fence = null;
@@ -423,15 +430,21 @@ export function tidyFallback(markdown: string): string {
       kept.push(line);
       continue;
     }
-    if (!line.trim()) {
-      kept.push(line);
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (line !== "" || kept.at(-1) !== "") kept.push(line);
       continue;
     }
-    if (/^\s*(\$\$|\\\[|\\\])\s*$/.test(line)) {
-      kept.push(line.trim()); // math delimiters are structural, not debris
+    if (trimmed === "\\[" || trimmed === "$$") {
+      mathEnd = trimmed === "$$" ? "$$" : "\\]";
+      kept.push(trimmed);
       continue;
     }
-    if (line.trim() === ">") {
+    if (trimmed === "\\]") {
+      kept.push(trimmed);
+      continue;
+    }
+    if (trimmed === ">") {
       kept.push(">");
       continue;
     }
@@ -450,10 +463,7 @@ export function tidyFallback(markdown: string): string {
     kept.push(line);
   }
 
-  return kept
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return kept.join("\n").trim();
 }
 
 function isTableSeparator(line: string): boolean {

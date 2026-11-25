@@ -14,12 +14,11 @@ opendil/
 │   ├── runtime/
 │   │   └── src/sandbox-worker.cjs # classic Web Worker script AND Node-importable CJS
 │   │                              #   (typeof-exports guard). Do not convert to ESM.
-│   └── react/                     # @kkkiio/dil-react — DilRenderer (execution
+│   └── react/                     # @kkkiio/dil-react — Chromium tests in e2e/, DilRenderer (execution
 │                                  #   "sandbox" | "direct"), tokens, svg-map, KaTeX,
 │                                  #   host overrides via DilComponents.
 ├── spec/                          # formal specification: dil.ebnf + design/empirical reports
 ├── examples/                      # curated .dil.md corpus, organized by pattern
-├── conformance/                   # executable oracle: ours vs captured reference artifacts
 └── benchmarks/                    # @kkkiio/dil-benchmarks — npm-private ("private": true),
                                    #   never ships answer keys
 ```
@@ -27,13 +26,12 @@ opendil/
 ## Domain Language
 
 - **DIL** — Dynamic Interface Language: a Markdown dialect — prose stays Markdown, raw HTML renders as literal text, plus JSX-like tags, `{#if}/{#each}` control flow, and `{@body}` JS statements.
-- **program** — the output of `compileDil`: script parts plus a constant table. Every document compiles to one, static and dynamic alike.
+- **program** — the output of `compileDil`: JavaScript plus a constant table. Every document compiles to one, static and dynamic alike.
 - **fallback** — the degraded Markdown projection rendered while a program cannot run (streaming tail, syntax errors, sandbox boot).
 - **resolved tree** — the pure-data node tree (`ResolvedNode`) an engine hands the renderer; identical across execution modes.
 - **DilSandbox** — the engine that runs a program in a hidden iframe + worker, for untrusted model output.
 - **DirectRuntime** — the engine that runs a program synchronously in the current context (browser or build machine), for trusted authored DIL.
 - **view state** — the persisted `{ root }` envelope of DIL.useState slots; seeds an engine, reported on user interactions (`readDilViewState`).
-- **conformance oracle** — captured reference artifacts (`*.raw.js` + `*.data.json`) that our implementation must reproduce exactly.
 - **snapshot** — golden files under `packages/core/src/__snapshots__/` (`<name>.tree.yaml` + `<name>.fallback.md`), regenerated with `pnpm test:update`.
 
 ## Policies & Mandatory Rules
@@ -57,8 +55,10 @@ Write API doc comments on public interfaces from a user-facing perspective, cove
 pnpm install             # Install workspace dependencies
 pnpm build               # Generate runtime assets + tsc build all packages
 pnpm typecheck           # Type-check all packages
-pnpm test                # Run all package unit/fuzz/snapshot tests + conformance suite
-pnpm test:conformance    # Run conformance suite only
+pnpm test                # Run all package unit, property and snapshot tests
+pnpm exec playwright install chromium
+pnpm test:e2e            # Run browser tests after pnpm build
+FUZZ_PROFILE=deep FUZZ_SEED=20241118 pnpm --filter @kkkiio/dil-runtime test
 pnpm test:update         # Regenerate golden parser snapshots in packages/core
 pnpm check               # Biome lint + format check
 pnpm check:write         # Biome lint + format auto-fix
@@ -86,6 +86,6 @@ The three publishable packages (`@kkkiio/dil-core`, `@kkkiio/dil-runtime`, `@kkk
 When asked to cut or release a new version:
 
 1. **Bump and verify**: set the same `version` in all three `packages/*/package.json`, then run `pnpm build && pnpm typecheck && pnpm test && pnpm check` locally — all green before anything is tagged.
-2. **Commit and tag**: commit as `chore(release): bump to v<version>` and tag `v<version>`.
+2. **Commit and tag**: commit as `chore(release): bump to v<version>`, tag `v<version>`, and push the commit and tag. Verify that **Release preflight** passed for that tag and commit.
 3. **Prepare a draft release, then stop**: create a GitHub Release **draft** with `gh release create v<version> --draft --title "v<version>"` and release notes covering the notable changes since the last release. Do **not** publish it — stop and share the draft URL with the maintainer.
 4. **The maintainer clicks Publish**: [`release.yml`](.github/workflows/release.yml) then verifies the tag against every manifest, runs the full verification suite, and publishes each package to npm via Trusted Publishing (skipping any version already published, so retries are safe).

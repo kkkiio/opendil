@@ -1,0 +1,62 @@
+diagnosticSummary: clean
+diagnostics: []
+tree:
+  - tag: title
+    attrs:
+      size: xl
+      level: "1"
+    children:
+      - Inventory check
+  - tag: box
+    children:
+      - stmt: const items = ["Cable", "Adapter"]
+      - each:
+          list: items
+          pattern: item, index
+          index: index
+          body:
+            - tag: row
+              attrs:
+                gap:
+                  expr: index + 1
+              children:
+                - tag: badge
+                  children:
+                    - expr: index + 1
+                - tag: text
+                  children:
+                    - expr: item
+  - tag: table
+    children:
+      - tag: table-row
+        children:
+          - tag: table-cell
+            attrs:
+              header: true
+            children:
+              - Item
+          - tag: table-cell
+            attrs:
+              header: true
+            children:
+              - Status
+      - tag: table-row
+        children:
+          - tag: table-cell
+            children:
+              - Cable
+          - tag: table-cell
+            children:
+              - Ready
+  - tag: list
+    attrs:
+      marker: none
+    children:
+      - tag: list-item
+        children:
+          - tag: icon
+            attrs:
+              name: check
+              inline: true
+          - " Packed"
+

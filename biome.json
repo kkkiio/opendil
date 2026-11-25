@@ -23,8 +23,7 @@
       "!benchmarks/.cache",
       "!benchmarks/trajectories",
       "!benchmarks/reports",
-      "conformance/**/*.ts",
-      "conformance/**/*.json"
+      "playwright.config.ts"
     ]
   },
   "formatter": {

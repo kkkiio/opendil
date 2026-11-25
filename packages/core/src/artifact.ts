@@ -1,29 +1,11 @@
-/**
- * The artifact serializer: emits a parsed DIL document as the reference compiler's
- * compiled artifact — the closed JavaScript program plus its constant table — matching
- * the captured `model_dil_v2` envelope byte-for-byte after standard formatting.
- *
- * Every emission rule is corpus-derived and enforced by the artifact-diff oracle
- * (`conformance/artifact.test.ts`): guard placement, when the `__dilSafe` prelude is
- * emitted, constant allocation order, the prose-run wrapping (a run of components carries
- * no `text`), the single-root body shape (no `Fragment` around one root), which host tags
- * resolve to a component call and which degrade to text, widget contracts for fenced and
- * `<CodeBlock>` blocks, host-tag resolution ids, and statement key injection. Platform
- * facts the compiler cannot derive from source arrive as options: the internal widget tag
- * name, an id factory (the platform allocates one id per fence or host tag, in document
- * order), and the DIL block's position in the message.
- */
-
 import { toFallbackMarkdown } from "./fallback.ts";
 import type { DilAttribute, DilDocument, DilElementNode, DilNode } from "./types.ts";
 import { DIL_VOCABULARY } from "./vocabulary.ts";
 
 export interface CompileOptions {
-  /** The internal tag emitted for client-resolved leaves; the captured platform's name
-   * is passed by conformance scenarios, production hosts use the brand-free default. */
+  /** Override the tag name for a host-rendered code block. */
   readonly clientWidgetTag?: string;
-  /** One id per fenced block or host tag, consumed in document order. Real hosts use
-   * the default random factory; tests replay the captured sequence for determinism. */
+  /** Return the next host widget or component ID in document order. Defaults to a random UUID. */
   readonly widgetIdFactory?: () => string;
   /** The DIL block's position within the host message. */
   readonly bodyIndex?: number;
@@ -237,7 +219,13 @@ class Serializer {
     return parts;
   }
 
-  private emitChildren(nodes: readonly DilNode[], wrapRuns: boolean, rawExpr = false, bareSingleText = true): string {
+  private emitChildren(
+    nodes: readonly DilNode[],
+    wrapRuns: boolean,
+    rawExpr = false,
+    bareSingleText = true,
+    includeAuthoredInline = false,
+  ): string {
     const parts: string[] = [];
     if (!wrapRuns) return this.emitChildParts(nodes, rawExpr).join(",");
     const isSpace = (node: DilNode): boolean => node.type === "text" && !node.value.trim();
@@ -260,7 +248,14 @@ class Serializer {
       run = [];
     };
     for (const node of nodes) {
-      if (this.isProseAtom(node)) run.push(node);
+      if (
+        this.isProseAtom(node) ||
+        (includeAuthoredInline &&
+          node.type === "element" &&
+          node.name === "icon" &&
+          node.attrs.some((attribute) => attribute.name === "inline" && attribute.kind === "boolean"))
+      )
+        run.push(node);
       else {
         flush();
         const emitted = this.emitNode(node, rawExpr);
@@ -409,6 +404,7 @@ class Serializer {
       !raw,
       singleDynamicChild,
       node.name !== "table-cell" && !listMarker,
+      node.name === "list-item",
     );
     if (node.name === "table-cell") this.cellDepth--;
     if (node.name === "svg") this.svgDepth--;

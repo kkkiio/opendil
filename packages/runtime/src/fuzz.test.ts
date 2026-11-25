@@ -15,12 +15,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 // Fixed seeds: a failing property reproduces exactly, and CI does not flip on a random
 // draw. Bump the seed deliberately to explore a new slice of the input space.
-import { compileDil, type DilNode, hasDilElements, parseDocument } from "@kkkiio/dil-core";
+import { compileDil, createCompileSession, type DilNode, hasDilElements, parseDocument } from "@kkkiio/dil-core";
 import fc from "fast-check";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { createExecutor } from "./sandbox-worker.cjs";
+
+const settings = {
+  numRuns: process.env.FUZZ_PROFILE === "deep" ? 5_000 : 120,
+  seed: Number(process.env.FUZZ_SEED ?? 20241118),
+};
 
 const mdastParser = unified().use(remarkParse).use(remarkGfm);
 
@@ -135,7 +140,7 @@ test("property: Markdown-only prose never becomes DIL and keeps its text", () =>
       assert.equal(hasDilElements(document.raw), false, `invented DIL for:\n${source}`);
       assert.equal(squash(treeText(document.tree)), squash(mdastText(source)), `text changed for:\n${source}`);
     }),
-    { numRuns: 60, seed: 20241118 },
+    settings,
   );
 });
 
@@ -170,7 +175,7 @@ test("property: inline DIL neighbours keep their separators", () => {
       );
       assert.equal(actual, expected, source);
     }),
-    { numRuns: 40, seed: 20241118 },
+    settings,
   );
 });
 
@@ -204,7 +209,7 @@ test("property: a loose list stays one list", () => {
       );
       assert.equal(items_.length, items.length, `lost list items for:\n${source}`);
     }),
-    { numRuns: 40, seed: 20241118 },
+    settings,
   );
 });
 
@@ -235,7 +240,7 @@ test("property: the document tier splits into exactly the Markdown blocks", () =
       const actual = parseDocument(source).tree.map((node) => (node.type === "element" ? node.name : node.type));
       assert.deepEqual(actual, expected, source);
     }),
-    { numRuns: 60, seed: 20241118 },
+    settings,
   );
 });
 
@@ -244,9 +249,10 @@ test("property: the document tier splits into exactly the Markdown blocks", () =
 interface Piece {
   readonly source: string;
   readonly node: string;
+  readonly markdown?: boolean;
 }
 
-const piece = fc.oneof(
+const piece: fc.Arbitrary<Piece> = fc.oneof(
   ...(
     [
       { source: "<box>\n  <text>alpha</text>\n</box>", node: "box" },
@@ -258,28 +264,143 @@ const piece = fc.oneof(
       { source: "{@body const a = 1}", node: "stmt" },
     ] satisfies Piece[]
   ).map((value) => fc.constant(value)),
-  paragraph.map((source) => ({ source, node: "text" })),
-  heading.map((source) => ({ source, node: "title" })),
-  list.map((source) => ({ source, node: "list" })),
-  table.map((source) => ({ source, node: "table" })),
-  fenced.map((source) => ({ source, node: "code-block" })),
-  quote.map((source) => ({ source, node: "blockquote" })),
+  paragraph.map((source) => ({ source, markdown: true, node: "text" })),
+  heading.map((source) => ({ source, markdown: true, node: "title" })),
+  list.map((source) => ({ source, markdown: true, node: "list" })),
+  table.map((source) => ({ source, markdown: true, node: "table" })),
+  fenced.map((source) => ({ source, markdown: true, node: "code-block" })),
+  quote.map((source) => ({ source, markdown: true, node: "blockquote" })),
 );
 
-test("property: DIL and Markdown blocks keep one document node each", () => {
+test("property: authored DIL and surrounding Markdown preserve their document structure", () => {
   fc.assert(
     fc.property(fc.array(piece, { minLength: 1, maxLength: 5 }), (pieces) => {
       const source = pieces.map((entry) => entry.source).join("\n\n");
+      const expected: string[] = [];
+      let prose: string[] = [];
+      for (const piece of [...pieces, { source: "", node: "", markdown: false }]) {
+        if (piece.markdown) {
+          prose.push(piece.source);
+          continue;
+        }
+        if (prose.length > 0) {
+          expected.push(...mdastParser.parse(prose.join("\n\n")).children.map((node) => DIL_NODE_FOR_MDAST[node.type]));
+          prose = [];
+        }
+        if (piece.node) expected.push(piece.node);
+      }
       const actual = parseDocument(source).tree.map((node) => (node.type === "element" ? node.name : node.type));
-      assert.deepEqual(
-        actual,
-        pieces.map((entry) => entry.node),
-        source,
-      );
+      assert.deepEqual(actual, expected, source);
     }),
-    { numRuns: 60, seed: 20241118 },
+    settings,
   );
 });
 
-// ---------------------------------------------------------------------------
-// O4 — evaluation and sanitizing stay inside the allowlist
+test("a statement inside a container is available to its siblings and runs once", () => {
+  const source = [
+    "{@body let count = 0}",
+    "<box><row>{@body count += 1}<text>inside {count}</text></row></box>",
+    "<text>outside {count}</text>",
+  ].join("\n");
+  const result = createExecutor().load(compileDil(parseDocument(source)));
+  assert.equal(result.errors, 0);
+  assert.equal(flatten(result.tree), "inside 1outside 1");
+});
+
+const dynamicCard = fc
+  .tuple(
+    fc.array(fc.constantFrom("box", "row", "col"), { maxLength: 5 }),
+    fc.array(word, { minLength: 1, maxLength: 4 }),
+  )
+  .map(([containers, items]) => {
+    const declaration = `{@body const values = ${JSON.stringify(items)}}{@body count += 1}`;
+    const nested = containers.reduce((child, tag) => `<${tag}>${child}</${tag}>`, declaration);
+    return {
+      source: [
+        "{@body let count = 0}",
+        `<box>${nested}</box>`,
+        "{#if count === 1}",
+        "{#each values as value, i}<row gap={i + 1}><text>{value}</text></row>{/each}",
+        "{/if}",
+        "<text>{missing()}ready</text>",
+      ].join("\n"),
+      items,
+    };
+  });
+
+test("property: nested declarations and dynamic controls render their values", () => {
+  fc.assert(
+    fc.property(dynamicCard, ({ source, items }) => {
+      const result = createExecutor().load(compileDil(parseDocument(source)));
+      assert.equal(flatten(result.tree), `${items.join("")}ready`);
+      assert.equal(result.errors, 1);
+    }),
+    settings,
+  );
+});
+
+const widgets = fc.array(fc.tuple(fc.boolean(), word), { minLength: 2, maxLength: 6 });
+
+test("property: fenced and authored code blocks resolve in document order", () => {
+  fc.assert(
+    fc.property(widgets, (pieces) => {
+      const source = pieces
+        .map(([authored, value]) =>
+          authored ? `<CodeBlock language="txt">${value}</CodeBlock>` : `\`\`\`txt\n${value}\n\`\`\``,
+        )
+        .join("\n\n");
+      let allocated = 0;
+      const artifact = compileDil(parseDocument(source), { widgetIdFactory: () => `code-${allocated++}` });
+      const ids = pieces.map((_, index) => `code-${index}`);
+      const result = createExecutor().load(artifact);
+      assert.equal(result.errors, 0);
+      assert.deepEqual(
+        result.tree.flatMap((node) => (node.kind === "element" ? [node.props.invocationId] : [])),
+        ids,
+      );
+      const references = Array.from(artifact.code.matchAll(/__dilConstants\["(\d+)"\]/g), ([, key]) => key);
+      assert.deepEqual([...new Set(references)].sort(), Object.keys(artifact.constants).sort());
+    }),
+    settings,
+  );
+});
+
+test("property: fallback preserves generated table entries and fenced indentation", () => {
+  fc.assert(
+    fc.property(table, word, fc.integer({ min: 0, max: 3 }), (sourceTable, label, indent) => {
+      const padding = " ".repeat(indent);
+      const fence = `${padding}\`\`\`txt\n${padding}  ${label}\n${padding}\`\`\``;
+      const artifact = compileDil(parseDocument(`${sourceTable}\n\n${fence}`));
+      const blocks = mdastParser.parse(artifact.fallbackMarkdown).children;
+      assert.deepEqual(
+        blocks.map((node) => node.type),
+        ["table", "code"],
+      );
+      const entries = mdastText(sourceTable);
+      assert.equal(mdastText(artifact.fallbackMarkdown), `${entries}   ${label}`);
+      assert.match(artifact.fallbackMarkdown, /^\|(?:-{8}\|){2}$/m);
+    }),
+    settings,
+  );
+});
+
+test("property: streamed prefixes remain executable and resolve the finished card", () => {
+  fc.assert(
+    fc.property(fc.array(fc.tuple(word, fc.nat(120)), { minLength: 2, maxLength: 6 }), (parts) => {
+      const source = parts.map(([label]) => `<box><text>${label}</text></box>`).join("\n\n");
+      const cuts = [...new Set(parts.map(([, offset]) => offset % source.length))].sort((a, b) => a - b);
+      const session = createCompileSession();
+      for (const end of cuts) {
+        const prefix = source.slice(0, end);
+        const artifact = session.compile(prefix);
+        assert.equal(createExecutor().load(artifact).errors, 0);
+        assert.deepEqual(session.compile(prefix), artifact);
+      }
+      const streamed = createExecutor().load(session.compile(source));
+      const finished = createExecutor().load(compileDil(parseDocument(source)));
+      assert.deepEqual(streamed.tree, finished.tree);
+      assert.equal(flatten(streamed.tree), parts.map(([label]) => label).join(""));
+    }),
+    settings,
+  );
+});
