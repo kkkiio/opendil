@@ -7,6 +7,12 @@ const first = [
   "{@body const [count, setCount] = DIL.useState(0)}",
   "<text>Checked items: {count}</text>",
   "<button onClick={() => setCount(count + 1)}>Check item</button>",
+  "",
+  "[Guide](./guide)",
+  "",
+  "```text",
+  "Inventory example",
+  "```",
 ].join("\n");
 const middle = `${first}\n\n<text>Checking the inventory</text>`;
 const final = `${middle}\n\n<text>Inventory complete</text>`;

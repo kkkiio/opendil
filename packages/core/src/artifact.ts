@@ -1,4 +1,5 @@
 import { toFallbackMarkdown } from "./fallback.ts";
+import { fenceToElement } from "./markdown.ts";
 import { topLevelIndex } from "./scanner.ts";
 import { splitStatements } from "./statements.ts";
 import type { DilAttribute, DilDocument, DilElementNode, DilNode } from "./types.ts";
@@ -11,8 +12,8 @@ export interface CompileOptions {
   readonly widgetIdFactory?: () => string;
   /** The DIL block's position within the host message. */
   readonly bodyIndex?: number;
-  /** Include Markdown heading levels for renderers that expose a document outline. */
-  readonly includeMarkdownHeadingLevels?: boolean;
+  /** Include native code blocks and Markdown rendering details for a standalone renderer. */
+  readonly preserveRenderDetails?: boolean;
   /**
    * Child indexes where a streaming batch starts, in increasing order, for a program
    * compiled by a `createCompileSession` that has already seen several revisions of the
@@ -53,6 +54,8 @@ const RAW_CHILD_TAGS = new Set([
   "caption",
   "button",
   "code",
+  "code-block",
+  "CodeBlock",
   "icon",
   "badge",
   "math",
@@ -152,7 +155,7 @@ class Serializer {
   private readonly statements: string[] = [];
   private readonly widgetTag: string;
   private readonly nextId: () => string;
-  private readonly includeMarkdownHeadingLevels: boolean;
+  private readonly preserveRenderDetails: boolean;
   private cdw = 0;
   private svgDepth = 0;
   private cellDepth = 0;
@@ -161,7 +164,7 @@ class Serializer {
   constructor(options: CompileOptions) {
     this.widgetTag = options.clientWidgetTag ?? "__clientDefinedWidget";
     this.nextId = options.widgetIdFactory ?? (() => crypto.randomUUID());
-    this.includeMarkdownHeadingLevels = options.includeMarkdownHeadingLevels ?? false;
+    this.preserveRenderDetails = options.preserveRenderDetails ?? false;
   }
 
   private alloc(value: unknown): string {
@@ -300,14 +303,17 @@ class Serializer {
       case "fence":
         return node.kind === "math"
           ? `__dil.jsx("math",{"block":true,"value":${this.alloc(node.value)}})`
-          : this.emitWidget();
+          : this.preserveRenderDetails
+            ? this.emitElement(fenceToElement(node))
+            : this.emitWidget();
       case "if":
         return this.emitIf(node);
       case "each":
         return this.emitEach(node);
       case "element":
         if (this.cellDepth === 0 && this.isElementOnlyParagraph(node)) return this.emitNode(node.children[0], rawExpr);
-        if (node.name === "code-block" || node.name === "CodeBlock") return this.emitWidget();
+        if (!this.preserveRenderDetails && (node.name === "code-block" || node.name === "CodeBlock"))
+          return this.emitWidget();
         if (HOST_TAGS.has(node.name)) {
           return this.resolvable(node) ? this.emitHostTag(node) : this.emitDegradedHostTag(node);
         }
@@ -345,7 +351,7 @@ class Serializer {
   private emitEach(node: Extract<DilNode, { type: "each" }>): string {
     const body = this.emitChildren(node.body, true).join(",");
     const roots = node.body.filter((child) => child.type !== "stmt");
-    const rendered = roots.length > 1 ? `__dil.jsx(__dil.Fragment,null,${body})` : body;
+    const rendered = !body ? "null" : roots.length > 1 ? `__dil.jsx(__dil.Fragment,null,${body})` : body;
     return this.safe(`(${node.list}).map((${node.pattern})=>${this.safe(rendered, "null")})`, "[]");
   }
 
@@ -375,6 +381,7 @@ class Serializer {
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
     props.push(`"__resolutionId":${this.takeId()}`);
+    if (this.preserveRenderDetails && node.name === "Link" && node.synthetic) props.push('"__dilSynthetic":true');
     const children = this.emitChildParts(node.children, true).join(",");
     const call = `__dil.jsx(${node.name},{${props.join(",")}}${children ? `,${children}` : ""})`;
     return this.safe(call, "null");
@@ -384,7 +391,7 @@ class Serializer {
     const attrs =
       node.name === "math"
         ? [...node.attrs].sort((a, b) => (a.name === "block" ? -1 : b.name === "block" ? 1 : 0))
-        : node.name === "title" && (!node.synthetic || !this.includeMarkdownHeadingLevels)
+        : node.name === "title" && (!node.synthetic || !this.preserveRenderDetails)
           ? node.attrs.filter((a) => a.name !== "level")
           : node.attrs;
     const props: string[] = [];
@@ -399,6 +406,7 @@ class Serializer {
       if (emitted.dynamic) attrsDynamic = true;
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
+    if ((node.name === "code-block" || node.name === "CodeBlock") && !node.closed) props.push('"closed":false');
     const singleDynamicChild = node.children.length === 1 && node.children[0].type === "expr";
     const dynamic = attrsDynamic || singleDynamicChild;
     const listMarker = startsListMarker(node);

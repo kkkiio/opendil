@@ -121,7 +121,9 @@
         if (typeof node.type !== "string") return [];
         if (--nodes < 0 || depth > 16) throw new Error("DIL tree exceeds its node budget");
         const props = Object.create(null);
+        const synthetic = node.type === "Link" && node.props?.__dilSynthetic === true;
         for (const [name, prop] of Object.entries(node.props ?? {})) {
+          if (name === "__dilSynthetic") continue;
           if ((name === "onClick" || name === "onChange" || name === "onSubmit") && typeof prop === "function") {
             const id = `h${nextHandlers.size}`;
             nextHandlers.set(id, prop);
@@ -137,7 +139,7 @@
           }
           if (property !== undefined) props[name] = property;
         }
-        return [{ kind: "element", name: node.type, props, children: convert(node.children, depth + 1) }];
+        return [{ kind: "element", name: node.type, ...(synthetic ? { synthetic } : {}), props, children: convert(node.children, depth + 1) }];
       };
       compiled(DIL, GenUI, DIL, ...HOST_COMPONENTS);
       if (DIL.__root === undefined) throw new Error("DIL artifact did not render a tree");

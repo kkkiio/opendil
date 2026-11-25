@@ -202,3 +202,15 @@ test("a body can declare several values and state slots", () => {
     [{ kind: "text", value: "A;BCDE" }],
   );
 });
+
+test("empty each bodies leave surrounding text visible", () => {
+  const source = "<text>Before</text>{#each [1, 2] as value}{/each}<text>After</text>";
+  const nodes = resolved(source);
+  assert.deepEqual(
+    nodes.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [
+      { kind: "text", value: "Before" },
+      { kind: "text", value: "After" },
+    ],
+  );
+});

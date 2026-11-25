@@ -110,3 +110,31 @@ test("Markdown headings preserve all six levels in the page outline", () => {
     }
   }
 });
+
+test("authored and fenced code reach the host code-block renderer", () => {
+  const blocks: Array<{ code: string; language?: string }> = [];
+  const html = renderToString(
+    createElement(DilRenderer, {
+      source: '```mermaid\nflowchart LR\n  A --> B\n```\n\n<CodeBlock language="txt">\nhello\n</CodeBlock>',
+      execution: "direct",
+      components: {
+        CodeBlock: ({ code, language }) => {
+          blocks.push({ code, language });
+          return createElement("pre", null, code);
+        },
+      },
+    }),
+  );
+  assert.deepEqual(blocks, [
+    { code: "flowchart LR\n  A --> B", language: "mermaid" },
+    { code: "hello", language: "txt" },
+  ]);
+  assert.match(html, /<pre>hello<\/pre>/);
+});
+
+test("Markdown relative links remain clickable in the card", () => {
+  const source = "[Guide](./guide) and [Section](#section)";
+  const html = renderToString(createElement(DilRenderer, { source, execution: "direct" }));
+  assert.match(html, /href="\.\/guide"/);
+  assert.match(html, /href="#section"/);
+});

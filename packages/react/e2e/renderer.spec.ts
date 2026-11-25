@@ -17,7 +17,7 @@ test.beforeAll(async () => {
 
 for (const mode of ["sandbox", "direct"]) {
   test(`${mode}: a streamed card remains interactive and restores saved state`, async ({ page }) => {
-    await page.route("http://dil.test/**", (route) =>
+    await page.route("https://dil.test/**", (route) =>
       route.request().url().endsWith("/host.js")
         ? route.fulfill({ contentType: "text/javascript", body: bundle })
         : route.fulfill({
@@ -26,8 +26,10 @@ for (const mode of ["sandbox", "direct"]) {
           }),
     );
 
-    await page.goto(`http://dil.test/?mode=${mode}`);
+    await page.goto(`https://dil.test/?mode=${mode}`);
     await expect(page.getByText("Checked items: 0")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Guide" })).toHaveAttribute("href", "./guide");
+    await expect(page.locator("pre").getByText("Inventory example")).toBeVisible();
     await page.getByRole("button", { name: "Check item" }).click();
     await expect(page.getByText("Checked items: 1")).toBeVisible();
 
