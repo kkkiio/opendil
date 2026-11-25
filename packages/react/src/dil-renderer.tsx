@@ -1,5 +1,13 @@
-import type { DilViewState } from "@kkkiio/dil-core";
-import { compileDil, isInlineTag, parseDocument, type ResolvedNode, type ResolvedProps } from "@kkkiio/dil-core";
+import type { CompiledArtifact, DilViewState } from "@kkkiio/dil-core";
+import {
+  compileDil,
+  createCompileSession,
+  type DilCompileSession,
+  isInlineTag,
+  parseDocument,
+  type ResolvedNode,
+  type ResolvedProps,
+} from "@kkkiio/dil-core";
 import { DilSandbox, DirectRuntime, type DirectSnapshot } from "@kkkiio/dil-runtime";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { type DilComponents, DilComponentsContext, type DilRenderFallback } from "./components-context.ts";
@@ -83,7 +91,7 @@ export function DilRenderer({
   const hostRef = useRef(host);
   hostRef.current = host;
   const text = useThrottledText(source, isStreaming, throttleMs);
-  const compiled = useMemo(() => compileDil(parseDocument(text, { isStreaming })), [text, isStreaming]);
+  const compiled = useCompiledArtifact(text, isStreaming);
   const rootRef = useRef<HTMLDivElement>(null);
   const [sends, setSends] = useState<ReadonlySet<string>>(() => new Set());
   // `setSnapshot` is declared after the runtime (the direct engine's first evaluation runs
@@ -152,6 +160,38 @@ export function DilRenderer({
       </DilRuntimeContext.Provider>
     </DilComponentsContext.Provider>
   );
+}
+
+/**
+ * Compile the published text.
+ *
+ * While tokens arrive, one `DilCompileSession` follows the message: each published revision
+ * is compiled against the previous ones, so blocks that have stopped growing keep the batch
+ * they arrived in. The final revision goes through the same session — the platform recompiles
+ * a finished message, it never compiles it from scratch — while a document that was never
+ * streamed takes the one-shot path and its flat program.
+ */
+function useCompiledArtifact(text: string, isStreaming: boolean): CompiledArtifact {
+  const session = useRef<DilCompileSession | null>(null);
+  const streamed = useRef<{ source: string; artifact: CompiledArtifact } | null>(null);
+  return useMemo(() => {
+    if (isStreaming) {
+      session.current ??= createCompileSession();
+      const artifact = session.current.compile(text);
+      streamed.current = { source: text, artifact };
+      return artifact;
+    }
+    const last = streamed.current;
+    if (session.current && last && text.startsWith(last.source)) {
+      if (text === last.source) return last.artifact;
+      const artifact = session.current.compile(text);
+      streamed.current = { source: text, artifact };
+      return artifact;
+    }
+    session.current = null;
+    streamed.current = null;
+    return compileDil(parseDocument(text, { isStreaming: false }));
+  }, [text, isStreaming]);
 }
 
 /**

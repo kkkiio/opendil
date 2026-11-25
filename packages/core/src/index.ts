@@ -14,29 +14,8 @@
  * diagnostics, which is what keeps the transcript stable while tokens arrive.
  */
 
-import { lowerMarkdown } from "./markdown.ts";
-import { normalizeSource, parse } from "./parser.ts";
-import { pruneEmptyIncomplete } from "./prune.ts";
 import { splitStatements } from "./statements.ts";
-import type { DilDocument, DilNode } from "./types.ts";
-
-export function parseDocument(source: string, { isStreaming = true } = {}): DilDocument {
-  const result = parse(source);
-  // `sourceLength` marks the fragment that still owns the end of the source: the only
-  // one `stream-repair.ts` may close constructs in.
-  const tree = pruneEmptyIncomplete(
-    lowerMarkdown(result.nodes, {
-      document: true,
-      sourceLength: isStreaming ? normalizeSource(source).length : undefined,
-    }),
-  );
-  return {
-    raw: result.nodes,
-    tree,
-    diagnostics: result.diagnostics,
-    diagnosticSummary: result.diagnosticSummary,
-  };
-}
+import type { DilNode } from "./types.ts";
 
 /** `{@body}` directives may appear anywhere; hoist them regardless of nesting. */
 export function collectStatements(nodes: readonly DilNode[], out: string[] = []): string[] {
@@ -61,9 +40,12 @@ export function collectStatements(nodes: readonly DilNode[], out: string[] = [])
   return out;
 }
 
+export type { DilCompileSession } from "./compile-session.ts";
+export { createCompileSession } from "./compile-session.ts";
 export type { CompiledArtifact, CompileOptions } from "./compiler.ts";
 export { compileDil } from "./compiler.ts";
 export { hasDilElements } from "./detect.ts";
+export { parseDocument } from "./document.ts";
 export { tidyFallback, toFallbackMarkdown } from "./fallback.ts";
 export { fenceToElement, isHttpsImageUrl, lowerInline, lowerMarkdown } from "./markdown.ts";
 export { normalizeSource, parse, RAW_TEXT_TAGS } from "./parser.ts";

@@ -27,6 +27,17 @@ export interface CompileOptions {
   readonly widgetIdFactory?: () => string;
   /** The DIL block's position within the host message. */
   readonly bodyIndex?: number;
+  /**
+   * Child indexes where a streaming batch starts, in increasing order, for a program
+   * compiled by a `createCompileSession` that has already seen several revisions of the
+   * source. Children before the first index are emitted flat; each later batch is wrapped
+   * in `__dil.jsx(__dil.Fragment,null,…)`, including the batch that is still growing.
+   *
+   * Omit it — as `compileDil` does — for the flat program a one-shot compile produces.
+   * Indexes that do not fall strictly inside the child list are ignored, so a batch
+   * boundary the document no longer has cannot make the program invalid.
+   */
+  readonly batchStarts?: readonly number[];
 }
 
 export interface CompiledArtifact {
@@ -193,10 +204,10 @@ class Serializer {
   run(
     document: DilDocument,
     bodyIndex: number,
+    batchStarts: readonly number[] = [],
   ): Omit<CompiledArtifact, "fallbackMarkdown" | "fallbackMarkdownVersion"> {
     const roots = this.emitChildParts(document.tree, false);
-    const children = roots.join(",");
-    const returned = roots.length === 1 ? children : `__dil.jsx(__dil.Fragment,null,${children})`;
+    const returned = assembleRoot(roots, batchStarts);
     const program =
       `DIL.render(__dil.jsx(()=>{${PREAMBLE}${this.statements.join("")}` +
       `return ${returned};},{"key":"body:${bodyIndex}"}));`;
@@ -438,9 +449,32 @@ class Serializer {
   }
 }
 
+/**
+ * Assemble the program's root expression from its emitted children. Without batch starts
+ * this is the one-shot shape: a single child, or a `Fragment` around many. With them, the
+ * leading batch stays flat and every later one — the growing tail included — is wrapped.
+ */
+function assembleRoot(roots: readonly string[], batchStarts: readonly number[]): string {
+  const bounds = [...new Set(batchStarts)].filter((start) => start > 0 && start < roots.length).sort((a, b) => a - b);
+  if (bounds.length === 0) {
+    const children = roots.join(",");
+    return roots.length === 1 ? children : `__dil.jsx(__dil.Fragment,null,${children})`;
+  }
+  const batches: string[] = [];
+  let start = 0;
+  for (const bound of bounds) {
+    batches.push(roots.slice(start, bound).join(","));
+    start = bound;
+  }
+  batches.push(roots.slice(start).join(","));
+  const [first, ...later] = batches;
+  const wrapped = later.map((batch) => `__dil.jsx(__dil.Fragment,null,${batch})`);
+  return `__dil.jsx(__dil.Fragment,null,${[first, ...wrapped].join(",")})`;
+}
+
 export function serializeArtifact(document: DilDocument, options: CompileOptions = {}): CompiledArtifact {
   const bodyIndex = options.bodyIndex ?? 0;
-  const serialized = new Serializer(options).run(document, bodyIndex);
+  const serialized = new Serializer(options).run(document, bodyIndex, options.batchStarts);
   return {
     ...serialized,
     fallbackMarkdown: toFallbackMarkdown(document.tree),
