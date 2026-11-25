@@ -43,6 +43,10 @@ function readBoolean(value: unknown): boolean {
   return value === true || value === "true";
 }
 
+function readWrap(value: unknown): boolean {
+  return readBoolean(value) || value === "wrap";
+}
+
 /** DIL spacing units are the Tailwind scale: 1 = 0.25rem. */
 function rem(units: number): string {
   return `${units * 0.25}rem`;
@@ -191,17 +195,15 @@ function gapStyle(value: unknown): CSSProperties {
   return length ? { gap: length } : {};
 }
 
-function sizeStyle(props: SkinProps): CSSProperties {
+function sizeStyle(props: SkinProps, allow: ReadonlySet<string>): CSSProperties {
   const style: CSSProperties = {};
-  const width = readLength(props.width);
-  const height = readLength(props.height);
-  const minHeight = readLength(props.minHeight);
-  const maxWidth = readLength(props.maxWidth);
+  const width = allow.has("width") ? readLength(props.width) : undefined;
+  const height = allow.has("height") ? readLength(props.height) : undefined;
+  const minHeight = allow.has("minHeight") ? readLength(props.minHeight) : undefined;
   if (width) style.width = width;
   if (height) style.height = height;
   if (minHeight) style.minHeight = minHeight;
-  if (maxWidth) style.maxWidth = maxWidth;
-  const flex = readNumber(props.flex) ?? (props.flex === "auto" ? "auto" : undefined);
+  const flex = allow.has("flex") ? (readNumber(props.flex) ?? (props.flex === "auto" ? "auto" : undefined)) : undefined;
   if (flex !== undefined) style.flex = String(flex);
   return style;
 }
@@ -223,27 +225,46 @@ const JUSTIFY: Record<string, string> = {
   evenly: "justify-evenly",
 };
 
-const DIRECTION: Record<string, string> = { row: "flex-row", col: "flex-col", column: "flex-col" };
+const BOX_ALLOW: ReadonlySet<string> = new Set([
+  "radius",
+  "align",
+  "justify",
+  "clip",
+  "padding",
+  "gap",
+  "background",
+  "width",
+  "height",
+  "minHeight",
+  "flex",
+]);
+const FLEX_ALLOW: ReadonlySet<string> = new Set(["align", "justify", "gap", "wrap", "height"]);
+const GRID_ALLOW: ReadonlySet<string> = new Set(["gap"]);
 
-function containerSkin(props: SkinProps, base: string): Skin {
-  const radius = typeof props.radius === "string" ? RADIUS[props.radius] : undefined;
+function containerSkin(props: SkinProps, base: string, allow: ReadonlySet<string>): Skin {
+  const radius = allow.has("radius") && typeof props.radius === "string" ? RADIUS[props.radius] : undefined;
   const classes = [
     base,
     radius ?? "",
-    typeof props.align === "string" ? (ALIGN[props.align] ?? "") : "",
-    typeof props.justify === "string" ? (JUSTIFY[props.justify] ?? "") : "",
-    typeof props.direction === "string" ? (DIRECTION[props.direction] ?? "") : "",
-    readBoolean(props.wrap) ? "flex-wrap" : "",
-    readBoolean(props.clip) ? "overflow-hidden" : "",
+    allow.has("align") && typeof props.align === "string" ? (ALIGN[props.align] ?? "") : "",
+    allow.has("justify") && typeof props.justify === "string" ? (JUSTIFY[props.justify] ?? "") : "",
+    allow.has("wrap") && readWrap(props.wrap) ? "flex-wrap" : "",
+    allow.has("clip") && readBoolean(props.clip) ? "overflow-hidden" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const skin = merge(
     { className: classes, style: {} },
-    { style: { ...paddingStyle(props.padding), ...gapStyle(props.gap), ...sizeStyle(props) } },
+    {
+      style: {
+        ...(allow.has("padding") ? paddingStyle(props.padding) : {}),
+        ...(allow.has("gap") ? gapStyle(props.gap) : {}),
+        ...sizeStyle(props, allow),
+      },
+    },
   );
-  return merge(skin, backgroundSkin(props.background));
+  return merge(skin, allow.has("background") ? backgroundSkin(props.background) : EMPTY);
 }
 
 // ---------------------------------------------------------------------------
@@ -268,16 +289,18 @@ export function layoutSkin(name: string, props: SkinProps): Skin {
       // A `gap` (or an explicit alignment) only means something in a stack, so `box`
       // becomes a column when the model asked for one, and stays a plain block otherwise.
       const stacking = props.gap !== undefined || props.justify !== undefined || props.align !== undefined;
-      let skin = containerSkin(props, stacking ? "flex flex-col min-w-0" : "min-w-0");
+      const swatch = readLength(props.size);
+      const sized = swatch !== undefined ? { ...props, width: swatch, height: swatch } : props;
+      let skin = containerSkin(sized, stacking ? "flex flex-col min-w-0" : "min-w-0", BOX_ALLOW);
       skin = merge(skin, borderSkin(props.border));
       return skin;
     }
     case "row":
-      return containerSkin(props, "flex flex-row min-w-0");
+      return containerSkin(props, "flex flex-row min-w-0", FLEX_ALLOW);
     case "col":
-      return containerSkin(props, "flex flex-col min-w-0");
+      return containerSkin(props, "flex flex-col min-w-0", FLEX_ALLOW);
     case "grid": {
-      const skin = containerSkin(props, "grid min-w-0");
+      const skin = containerSkin(props, "grid min-w-0", GRID_ALLOW);
       const columns = readNumber(props.columns);
       if (columns !== undefined && columns > 0 && columns <= 12) {
         return merge(skin, { style: { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } });
@@ -295,7 +318,7 @@ export function layoutSkin(name: string, props: SkinProps): Skin {
       return { className: `${gap} ${connector}`.trim(), style: {} };
     }
     case "grid-item":
-      return { className: "min-w-0", style: sizeStyle(props) };
+      return { className: "min-w-0", style: {} };
     case "table-cell": {
       // A Markdown column alignment (`:---:`) arrives as `textAlign`, the same attribute
       // `text` already uses.
@@ -305,6 +328,13 @@ export function layoutSkin(name: string, props: SkinProps): Skin {
     case "divider": {
       const spacing = readNumber(props.spacing);
       const literal = readColor(props.color);
+      const subtle = props.color === "subtle";
+      if (subtle) {
+        return {
+          className: "border-0 border-t border-border/60",
+          style: spacing !== undefined ? { marginBlock: rem(spacing) } : {},
+        };
+      }
       return {
         className: "border-0 border-t border-border",
         style: {
@@ -366,13 +396,19 @@ const TEXT_COLOR: Record<string, string> = {
   subtle: "text-muted-foreground/60",
 };
 
-function textSkinOf(props: SkinProps, base: string): Skin {
-  const size = typeof props.size === "string" ? (FONT_SIZE[props.size] ?? undefined) : undefined;
-  const literalSize = FONT_SIZE[String(props.size)] ? undefined : readLength(props.size);
-  const weight = typeof props.weight === "string" ? (FONT_WEIGHT[props.weight] ?? "") : "";
-  const align = typeof props.textAlign === "string" ? (TEXT_ALIGN[props.textAlign] ?? "") : "";
-  const namedColor = typeof props.color === "string" ? TEXT_COLOR[props.color] : undefined;
-  const literalColor = namedColor ? undefined : readColor(props.color);
+const TYPO_ALLOW: ReadonlySet<string> = new Set(["size", "weight", "color", "textAlign", "tabularNums", "lineThrough"]);
+const TITLE_ALLOW: ReadonlySet<string> = new Set(["size", "color"]);
+const CAPTION_ALLOW: ReadonlySet<string> = new Set(["textAlign"]);
+const BADGE_ALLOW: ReadonlySet<string> = new Set(["color"]);
+
+function textSkinOf(props: SkinProps, base: string, allow: ReadonlySet<string>): Skin {
+  const size = allow.has("size") && typeof props.size === "string" ? (FONT_SIZE[props.size] ?? undefined) : undefined;
+  const literalSize = allow.has("size") && !FONT_SIZE[String(props.size)] ? readLength(props.size) : undefined;
+  const weight = allow.has("weight") && typeof props.weight === "string" ? (FONT_WEIGHT[props.weight] ?? "") : "";
+  const align =
+    allow.has("textAlign") && typeof props.textAlign === "string" ? (TEXT_ALIGN[props.textAlign] ?? "") : "";
+  const namedColor = allow.has("color") && typeof props.color === "string" ? TEXT_COLOR[props.color] : undefined;
+  const literalColor = namedColor ? undefined : allow.has("color") ? readColor(props.color) : undefined;
 
   const classes = [
     base,
@@ -380,8 +416,8 @@ function textSkinOf(props: SkinProps, base: string): Skin {
     weight,
     align,
     namedColor ?? "",
-    readBoolean(props.tabularNums) ? "tabular-nums" : "",
-    readBoolean(props.lineThrough) ? "line-through" : "",
+    allow.has("tabularNums") && readBoolean(props.tabularNums) ? "tabular-nums" : "",
+    allow.has("lineThrough") && readBoolean(props.lineThrough) ? "line-through" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -390,22 +426,23 @@ function textSkinOf(props: SkinProps, base: string): Skin {
   if (literalSize) style.fontSize = literalSize;
   if (literalColor) style.color = literalColor;
 
-  return merge({ className: classes, style }, { style: sizeStyle(props) });
+  return { className: classes, style };
 }
 
 export function textSkin(name: string, props: SkinProps): Skin {
   switch (name) {
     case "title":
-      return textSkinOf(props, "font-semibold tracking-tight text-foreground");
+      return textSkinOf(props, "font-semibold tracking-tight text-foreground", TITLE_ALLOW);
     case "caption":
-      return textSkinOf(props, "text-xs leading-5 text-muted-foreground");
+      return textSkinOf(props, "text-xs leading-5 text-muted-foreground", CAPTION_ALLOW);
     case "badge":
       return textSkinOf(
-        { ...props, size: props.size ?? "xs" },
-        "inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted px-2 py-0.5 font-medium",
+        props,
+        "inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted px-2 py-0.5 font-medium text-xs leading-5",
+        BADGE_ALLOW,
       );
     case "code":
-      return textSkinOf(props, "rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]");
+      return textSkinOf(props, "rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]", new Set<string>());
     case "icon": {
       const literalColor = readColor(props.color);
       const named = typeof props.color === "string" ? TEXT_COLOR[props.color] : undefined;
@@ -416,7 +453,7 @@ export function textSkin(name: string, props: SkinProps): Skin {
       };
     }
     default:
-      return textSkinOf(props, "min-w-0 text-foreground");
+      return textSkinOf(props, "min-w-0 text-foreground", TYPO_ALLOW);
   }
 }
 

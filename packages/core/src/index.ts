@@ -80,6 +80,8 @@ export type {
 export { MAX_DIL_DEPTH, MAX_DIL_NODES, readDilViewState, readTree, readViewState } from "./render-tree.ts";
 export { findTopLevel, LineIndex, readBalanced, splitEachClause, topLevelIndex } from "./scanner.ts";
 export { splitStatements, stateStatement } from "./statements.ts";
+export type { PropForm, StylePropEntry, StylePropsOfTag } from "./style-props.ts";
+export { STYLE_PROPS } from "./style-props.ts";
 export type {
   DilAttribute,
   DilAttributeKind,
