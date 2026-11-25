@@ -47,12 +47,13 @@ test("the error tally lands on the root as data-dil-errors", () => {
 });
 
 test("a seeded view state restores the card before its first render", () => {
-  const source = ["{@body const [count, setCount] = DIL.useState(0)}", "<text>{count}</text>"].join("\n");
-  const html = renderToString(
-    createElement(DilRenderer, { source, execution: "direct", viewState: { root: { count: 7 } } }),
-  );
-  assert.match(html, /7/);
-  assert.ok(!html.includes("whitespace-pre-wrap"));
+  for (const spacing of ["", " ", " /* initial value */ "]) {
+    const source = [`{@body const [count, setCount] = DIL.useState${spacing}(0)}`, "<text>{count}</text>"].join("\n");
+    const html = renderToString(
+      createElement(DilRenderer, { source, execution: "direct", viewState: { root: { count: 7 } } }),
+    );
+    assert.match(html, />7</);
+  }
 });
 
 test("the form-control family renders: checkbox, input, form", () => {
@@ -99,4 +100,42 @@ test("a multi-field form gets a submit path: buttons inside a form are submit bu
   // Outside a form the same button stays inert.
   const outside = renderToString(createElement(DilRenderer, { source: "<button>提交</button>", execution: "direct" }));
   assert.match(outside, /type="button"/);
+});
+
+test("Markdown headings preserve all six levels in the page outline", () => {
+  const source = Array.from({ length: 6 }, (_, index) => `${"#".repeat(index + 1)} Section ${index + 1}`).join("\n\n");
+  for (const isStreaming of [true, false]) {
+    const html = renderToString(createElement(DilRenderer, { source, isStreaming, execution: "direct" }));
+    for (let level = 1; level <= 6; level++) {
+      assert.match(html, new RegExp(`<h${level}[^>]*>Section ${level}</h${level}>`));
+    }
+  }
+});
+
+test("authored and fenced code reach the host code-block renderer", () => {
+  const blocks: Array<{ code: string; language?: string }> = [];
+  const html = renderToString(
+    createElement(DilRenderer, {
+      source: '```mermaid\nflowchart LR\n  A --> B\n```\n\n<CodeBlock language="txt">\nhello\n</CodeBlock>',
+      execution: "direct",
+      components: {
+        CodeBlock: ({ code, language }) => {
+          blocks.push({ code, language });
+          return createElement("pre", null, code);
+        },
+      },
+    }),
+  );
+  assert.deepEqual(blocks, [
+    { code: "flowchart LR\n  A --> B", language: "mermaid" },
+    { code: "hello", language: "txt" },
+  ]);
+  assert.match(html, /<pre>hello<\/pre>/);
+});
+
+test("Markdown relative links remain clickable in the card", () => {
+  const source = "[Guide](./guide) and [Section](#section)";
+  const html = renderToString(createElement(DilRenderer, { source, execution: "direct" }));
+  assert.match(html, /href="\.\/guide"/);
+  assert.match(html, /href="#section"/);
 });

@@ -1,7 +1,7 @@
-import type { DilHandler, DilProgram, DilViewState, ResolvedNode } from "@kkkiio/dil-core";
-import { readTree, readViewState } from "@kkkiio/dil-core";
+import type { CompiledArtifact, DilHandler, DilViewState, ResolvedNode } from "@kkkiio/dil-core";
+import { readViewState } from "@kkkiio/dil-core";
 import { SANDBOX_FRAME_HTML as frameHtml, SANDBOX_WORKER_SOURCE as workerSource } from "./sandbox-assets.gen.ts";
-import type { DilResult } from "./sandbox-worker.cjs";
+import type { DilExecutorResult as DilResult } from "./sandbox-worker.cjs";
 
 export interface DilHost {
   readonly busy: boolean;
@@ -10,7 +10,7 @@ export interface DilHost {
 
 interface Revision {
   readonly revision: number;
-  readonly program: DilProgram;
+  readonly artifact: CompiledArtifact;
 }
 
 type Request = (Revision & { kind: "load" }) | { kind: "trigger"; revision: number; handler: string; args: unknown[] };
@@ -53,14 +53,14 @@ export class DilSandbox {
     this.state = readViewState(viewState?.root ?? {});
   }
 
-  update(program: DilProgram | undefined): void {
-    if (program === this.desired?.program) return;
+  update(program: CompiledArtifact | undefined): void {
+    if (program === this.desired?.artifact) return;
     if (!program) {
       this.stop();
       this.desired = undefined;
       return;
     }
-    this.desired = { program, revision: ++this.revision };
+    this.desired = { artifact: program, revision: ++this.revision };
     if (this.visible) this.connect();
     this.pump();
   }
@@ -170,7 +170,7 @@ export class DilSandbox {
         this.pump();
         return;
       }
-      request = { ...event.request, revision: this.loaded };
+      request = event.request;
       dispatched = this.events.shift();
     } else if (this.desired.revision > this.attempted) {
       request = { ...this.desired, kind: "load" };
@@ -195,7 +195,7 @@ export class DilSandbox {
     let viewState: DilViewState | undefined;
     try {
       if (data.result && revision) {
-        const tree = readTree(data.result.tree, revision.program.data);
+        const tree = data.result.tree as readonly ResolvedNode[];
         const nextState = readViewState(data.result.state);
         if (event && this.onViewStateChange && JSON.stringify(this.state) !== JSON.stringify(nextState)) {
           viewState = { root: nextState };
@@ -212,7 +212,7 @@ export class DilSandbox {
           this.port?.postMessage({
             kind: "probe",
             id: this.intent,
-            program: revision.program,
+            artifact: revision.artifact,
             state: this.state,
             buttons: [...this.buttons],
           });

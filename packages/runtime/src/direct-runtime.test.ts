@@ -23,7 +23,7 @@ function engine(viewState?: ReturnType<typeof readDilViewState>) {
 }
 
 function programOf(source: string) {
-  return compileDil(parseDocument(source, { isStreaming: false })).program;
+  return compileDil(parseDocument(source, { isStreaming: false }));
 }
 
 function textOf(nodes: readonly ResolvedNode[]): string {
@@ -47,15 +47,13 @@ test("evaluate resolves dynamic content synchronously", () => {
   assert.equal(textOf(snapshot.tree), "写代码跑测试");
 });
 
-test("evaluate counts broken expressions and syntax in the error tally", () => {
+test("evaluate counts broken expressions and rejects syntactically broken statements", () => {
   const { runtime } = engine();
   const runtimeOnly = runtime.evaluate(programOf("<text>{undefinedFunction()}</text>"));
   assert.ok(runtimeOnly);
   assert.equal(runtimeOnly.errors, 1); // the expression threw at render time
   const syntax = runtime.evaluate(programOf("{@body const = broken}<text>still renders</text>"));
-  assert.ok(syntax);
-  assert.equal(syntax.errors, 1); // the statement fell back at assembly time
-  assert.equal(textOf(syntax.tree), "still renders");
+  assert.equal(syntax, undefined);
 });
 
 test("evaluate caches the snapshot for the same program reference", () => {

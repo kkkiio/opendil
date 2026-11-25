@@ -2,7 +2,7 @@
  * Deterministic scoring for DIL benchmarks.
  *
  * Uses `@kkkiio/dil-core` (`parseDocument`, `compileDil`) and `@kkkiio/dil-runtime/worker`
- * (`createProgram`) so a case passes only when the emitted DIL genuinely parses,
+ * (`createExecutor`) so a case passes only when the emitted DIL genuinely parses,
  * compiles, and executes without runtime errors.
  */
 
@@ -14,7 +14,7 @@ import {
   type DilNode,
   parseDocument,
 } from "@kkkiio/dil-core";
-import { createProgram } from "@kkkiio/dil-runtime/worker";
+import { createExecutor } from "@kkkiio/dil-runtime/worker";
 import type { BenchmarkTrack } from "./runners/types.ts";
 
 export interface CaseCheck {
@@ -295,11 +295,11 @@ export function compilesAndRuns(label: string): CaseCheck {
     id: "compile-and-run",
     label,
     test: (context) => {
-      const { program } = compileDil(context.parse);
-      const runner = createProgram();
-      let result: ReturnType<typeof runner.load>;
+      const artifact = compileDil(context.parse);
+      const executor = createExecutor();
+      let result: ReturnType<typeof executor.load>;
       try {
-        result = runner.load(program);
+        result = executor.load(artifact);
       } catch {
         return false;
       }

@@ -18,7 +18,7 @@ check:
 fmt:
     pnpm check:write
 
-# All package tests plus the conformance suite.
+# All package tests.
 test:
     pnpm test
 
@@ -30,9 +30,9 @@ build:
 typecheck:
     pnpm typecheck
 
-# Conformance suite only — ours vs the captured reference oracle.
-conformance:
-    pnpm test:conformance
+# Run the Chromium end-to-end tests.
+e2e:
+    pnpm test:e2e
 
 # Regenerate golden parser snapshots in @kkkiio/dil-core.
 snapshot:

@@ -6,9 +6,7 @@
 #
 # What is measured: the files the package tests import. Core tests reach their own source
 # directly; runtime/react tests resolve cross-package imports through the workspace links
-# (i.e. `dist/`), so those entries appear as separate rows. The conformance suite is an
-# oracle against captured artifacts rather than unit coverage, and benchmarks need live
-# credentials — both are excluded.
+# (i.e. `dist/`), so those entries appear as separate rows.
 
 name: coverage
 

@@ -1,0 +1,44 @@
+name: Release preflight
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+  schedule:
+    - cron: '37 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Deep verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm build
+      - run: pnpm typecheck
+
+      - name: Run package tests with deep property testing
+        env:
+          FUZZ_PROFILE: deep
+        run: |
+          export FUZZ_SEED="$(date -u +%Y%m%d)"
+          echo "Property testing seed: ${FUZZ_SEED}"
+          pnpm test
+
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

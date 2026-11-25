@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileDil, parseDocument, type ResolvedNode, type ResolvedProps, readTree } from "@kkkiio/dil-core";
-import { createProgram } from "./sandbox-worker.cjs";
+import { compileDil, parseDocument, type ResolvedNode } from "@kkkiio/dil-core";
+import { createExecutor } from "./sandbox-worker.cjs";
 
 function count(nodes: readonly ResolvedNode[]): number {
   let total = 0;
@@ -25,9 +25,7 @@ test("large plain Markdown evaluates intact up to the transfer budget", () => {
 test("nested loops cannot expand without bound", () => {
   const source =
     "{#each Array.from({ length: 400 }) as r}{#each Array.from({ length: 400 }) as c}<text>x</text>{/each}{/each}";
-  const tree = resolved(source);
-  // 400 × 400 = 160k would overflow the stack while pushing; the pass is capped instead.
-  assert.ok(count(tree) <= 5_000, `resolved ${count(tree)} nodes`);
+  assert.throws(() => createExecutor().load(compileDil(parseDocument(source))));
 });
 
 test("a large but legitimate loop still renders", () => {
@@ -39,7 +37,7 @@ test("a large but legitimate loop still renders", () => {
 
 function resolved(source: string): readonly ResolvedNode[] {
   const compiled = compileDil(parseDocument(source));
-  return readTree(createProgram().load(compiled.program).tree, compiled.program.data);
+  return createExecutor().load(compiled).tree;
 }
 
 function text(nodes: readonly ResolvedNode[]): string {
@@ -86,39 +84,44 @@ test("if/else picks the first true branch and falls back to false on failure", (
 });
 
 test("interpolation formats values and drops the empty ones", () => {
-  const nodes = resolved("{@body const n = 3}<text>共 {n} 项，{missing}, 完成</text>");
-  assert.equal(text(nodes), "共 3 项，, 完成");
-  const broken = resolved("<text>a{m.p.toFixed(}b</text>");
-  assert.equal(text(broken), "ab");
+  const nodes = resolved(
+    '{@body const n = 3}{@body const empty = ""}{@body const arr = ["a", "b"]}<text>共 {n} 项{empty}{arr} 完成</text>',
+  );
+  assert.equal(text(nodes), "共 3 项ab 完成");
+  const [span] = find(nodes, "text");
+  assert.ok(span && span.kind === "element");
+  assert.deepEqual(
+    span.children.map((child) => (child.kind === "text" ? child.value : "?")),
+    ["共 ", "3", " 项", "a", "b", " 完成"],
+  );
 });
 
 test("attributes resolve in all four forms, with undefined on failure", () => {
-  const [box] = find(resolved("{@body const n = 3}<box padding={2} radius='lg' border gap={n}>x</box>"), "box");
+  const [box] = find(resolved("{@body const n = 3}<box border radius='lg' data={{ a: 1 }} gap={n}>x</box>"), "box");
   assert.ok(box && box.kind === "element");
-  assert.equal(box.props.padding, 2);
-  assert.equal(box.props.radius, "lg");
   assert.equal(box.props.border, true);
+  assert.equal(box.props.radius, "lg");
+  assert.deepEqual(box.props.data, { a: 1 });
   assert.equal(box.props.gap, 3);
 
-  const [broken] = find(resolved("<box gap={oops.missing.x}>y</box>"), "box");
-  assert.ok(broken && broken.kind === "element");
-  assert.equal(broken.props.gap, undefined);
+  const [kept] = find(resolved("<box gap={undefined}>y</box>"), "box");
+  assert.ok(kept && kept.kind === "element");
+  assert.equal(kept.props.gap, undefined);
+
+  assert.equal(find(resolved("<box gap={oops.missing.x}>y</box>"), "box").length, 0);
 });
 
 test("a broken expression never removes its siblings", () => {
-  const nodes = resolved("<text>before {oops.custom(} after</text>");
-  assert.equal(text(nodes), "before  after");
+  const nodes = resolved("<box>before</box>{oops.missing}<box>after</box>");
+  assert.equal(find(nodes, "box").length, 2);
+  assert.equal(text(nodes), "beforeafter");
 });
 
-test("fences become code-block and math elements", () => {
-  const code = resolved("```js\nconst a = 1\n```");
-  const [block] = find(code, "code-block");
-  assert.ok(block && block.kind === "element");
-  assert.equal(block.props.language, "js");
-  assert.equal(text(block.children), "const a = 1");
+test("fences become widget contracts and display math elements", () => {
+  const [widget] = find(resolved("```js\nconst a = 1\n```"), "__clientDefinedWidget");
+  assert.ok(widget && widget.kind === "element");
 
-  const math = resolved("$$\nE = mc^2\n$$");
-  const [expression] = find(math, "math");
+  const [expression] = find(resolved("$$\nE = mc^2\n$$"), "math");
   assert.ok(expression && expression.kind === "element");
   assert.equal(expression.props.block, true);
   assert.equal(expression.props.value, "E = mc^2");
@@ -155,16 +158,9 @@ test("a real DIL sample renders its each over inline data", () => {
   assert.equal(box.props.gap, 3);
 });
 
-test("a streaming fence reaches the renderer with closed: false", () => {
-  // The heavy leaves skip KaTeX/Shiki until the construct closes. `closed` is structural —
-  // lowering keeps it on the node — so the element path has to forward it into props.
-  const resolveFirst = (source: string) => (resolved(source)[0] as { props: ResolvedProps }).props;
-
-  assert.equal(resolveFirst("```js\nconst a = 1").closed, false);
-  assert.equal(resolveFirst("```js\nconst a = 1;\n```").closed, true);
-  assert.equal(resolveFirst("$$\n\\int_0^1").closed, false);
-  assert.equal(resolveFirst("$$\n\\int_0^1\n$$").closed, true);
-  assert.equal(resolveFirst("**<text>x</text>**").closed, true, "a non-fence element is closed");
+test("an unclosed streaming fence compiles to a widget placeholder", () => {
+  const [widget] = find(resolved("```js\nconst a = 1"), "__clientDefinedWidget");
+  assert.ok(widget && widget.kind === "element");
 });
 
 test("each supports array and object destructuring with optional index", () => {
@@ -175,4 +171,89 @@ test("each supports array and object destructuring with optional index", () => {
   const objSource =
     '{#each [{ name: "a", pct: "10%" }, { name: "b" }] as { name: label, pct = "0%" }}<text>{label}={pct}|</text>{/each}';
   assert.equal(text(resolved(objSource)), "a=10%|b=0%|");
+});
+
+test("a conditional renders all children of the active branch", () => {
+  const nodes = resolved(
+    [
+      "{#if false}<text>Ignored</text><text>Hidden</text>",
+      "{:else if false}",
+      "{:else}<text>First</text><text>Second</text>{/if}",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    nodes.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [
+      { kind: "text", value: "First" },
+      { kind: "text", value: "Second" },
+    ],
+  );
+});
+
+test("a body can declare several values and state slots", () => {
+  const nodes = resolved(
+    [
+      '{@body const first = "A;B"; const second = "C", third = "D"; const [saved] = DIL.useState("E")}',
+      "<text>{first + second + third + saved}</text>",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    nodes.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [{ kind: "text", value: "A;BCDE" }],
+  );
+});
+
+test("empty each bodies leave surrounding text visible", () => {
+  const source = "<text>Before</text>{#each [1, 2] as value}{/each}<text>After</text>";
+  const nodes = resolved(source);
+  assert.deepEqual(
+    nodes.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [
+      { kind: "text", value: "Before" },
+      { kind: "text", value: "After" },
+    ],
+  );
+});
+
+test("body statements handle automatic semicolons, comments and regular expressions", () => {
+  const nodes = resolved(
+    [
+      "{@body",
+      'const source = "DIL.useState("',
+      "const matcher = /a;b/",
+      'const match = matcher.test("a;b") // a semicolon here ; is comment text',
+      "}",
+      "<text>{source} {match ? 'matched' : 'missed'}</text>",
+    ].join("\n"),
+  );
+  const content = nodes.flatMap((node) => (node.kind === "element" ? node.children : []));
+  assert.equal(content.map((node) => (node.kind === "text" ? node.value : "")).join(""), "DIL.useState( matched");
+});
+
+test("literal and computed object props preserve JavaScript values", () => {
+  const source = [
+    "{@body const count = 4}",
+    "<box data={{label: 'one', items: [1, 2,],}}/>",
+    "<box data={{count, value: count + 2}}/>",
+    "<box data={{value: 1, error: missing()}}/>",
+  ].join("\n");
+  const boxes = find(resolved(source), "box");
+  assert.deepEqual(
+    boxes.map((node) => (node.kind === "element" ? node.props.data : undefined)),
+    [
+      { label: "one", items: [1, 2] },
+      { count: 4, value: 6 },
+    ],
+  );
+});
+
+test("a line comment in an expression cannot consume the surrounding card", () => {
+  const nodes = resolved("<box gap={1 // columns\n}><text>{2 // visible\n}</text></box>");
+  const [box] = find(nodes, "box");
+  assert.ok(box?.kind === "element");
+  assert.equal(box.props.gap, 1);
+  assert.deepEqual(
+    box.children.flatMap((node) => (node.kind === "element" ? node.children : [])),
+    [{ kind: "text", value: "2" }],
+  );
 });

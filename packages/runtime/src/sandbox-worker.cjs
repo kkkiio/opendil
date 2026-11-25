@@ -1,5 +1,6 @@
 (() => {
   const LIMIT = 5_000;
+  const MAX_TREE_DEPTH = 64;
   const MAX_TEXT = 1_000_000;
   const NativeFunction = Function;
   const copy = structuredClone;
@@ -33,40 +34,21 @@
   }
 
   /** Assemble a runnable JS body and its data using the worker's native syntax checks. */
-  function assembleProgram(program) {
-    let errors = 0;
-    const code = program.script
-      .map((part) => {
-        if (typeof part === "string") return part;
-        try {
-          switch (part.kind) {
-            case "each":
-              new NativeFunction(`"use strict"; return ((${part.code}) => 0);`);
-              return `(${part.code})`;
-            case "expr":
-              new NativeFunction(`"use strict"; return (${part.code}\n);`);
-              return part.code;
-            default:
-              new NativeFunction(`"use strict";\n${part.code}\n`);
-              return part.code;
-          }
-        } catch {
-          errors++;
-          return part.kind === "each" ? `(${part.fallback})` : part.fallback;
-        }
-      })
-      .join("");
-    return { code, data: program.data, errors };
-  }
+  const HOST_COMPONENTS = ["Cite", "Link", "Entity", "AsyncImage", "AsyncImageGroup"];
+  const SAFE_PRELUDE =
+    "function __dilSafe(evaluate,failureValue){try{return evaluate()}catch{return failureValue}}";
+  const COUNTING_PRELUDE =
+    "function __dilSafe(evaluate,failureValue){try{return evaluate()}catch{DIL.__safeError();return failureValue}}";
 
-  /** Execute DIL revisions and serialize the nodes, state, and effects of explicit control events. */
-  function createProgram(initialState = {}) {
+  /** Execute DIL artifacts: run the compiled program and resolve its tree, state, and
+   *  handlers. `load` takes `{ code, constants, appData }`; `trigger` replays an event. */
+  function createExecutor(initialState = {}) {
     let slots = new Map(Object.entries(initialState));
-    let factory;
-    let programData;
-    let callbacks = new Map();
+    let handlers = new Map();
+    let artifact;
     let effects;
     let updating = false;
+    let renderSequence = 0;
 
     const GenUI = Object.freeze({
       issueNewTurn(value) {
@@ -74,127 +56,119 @@
         if (effects && prompt && prompt.length <= MAX_TEXT && effects.length === 0) effects.push(prompt);
       },
     });
-    const DIL = Object.freeze({ useState: (initial, options) => state(options?.key, initial, options) });
-
-    function state(key, initial, options) {
-      const slot = typeof options?.key === "string" ? options.key : key;
-      if (typeof slot !== "string" || slot.length > 512) return [initial, () => undefined];
-      if (!slots.has(slot)) slots.set(slot, initial);
-      return [
-        slots.get(slot),
-        (next) => {
-          if (updating) slots.set(slot, typeof next === "function" ? next(slots.get(slot)) : next);
-        },
-      ];
-    }
-
-    function render(nextFactory, data) {
-      const handlers = new Map();
+    function resolve(artifact, requestedRenderId = 0) {
+      const renderId = Math.max(renderSequence + 1, requestedRenderId);
+      renderSequence = renderId;
+      const nextHandlers = new Map();
       const buttons = [];
+      const constants = artifact.constants ?? {};
+      const appData = artifact.appData ?? {};
+      let anonymous = 0;
+      const DIL = {
+        Fragment: Symbol("fragment"),
+        jsx(type, props, ...children) {
+          if (typeof type === "function") return type();
+          return { type, props: props ?? {}, children };
+        },
+        render(node) {
+          DIL.__root = node;
+        },
+        useConstants() {
+          return constants;
+        },
+        useAppData(select) {
+          return select ? select(appData) : appData;
+        },
+        useState(initial, options) {
+          const slot = typeof options?.key === "string" ? options.key : `anonymous:${anonymous++}`;
+          if (!slots.has(slot)) slots.set(slot, initial);
+          return [
+            slots.get(slot),
+            (next) => {
+              if (!updating) return;
+              const previous = slots.get(slot);
+              const value = typeof next === "function" ? next(previous) : next;
+              if (!Object.is(value, previous)) slots.set(slot, value);
+            },
+          ];
+        },
+        __root: undefined,
+        __safeError() {
+          DIL.__errors += 1;
+        },
+        __errors: 0,
+      };
       const budget = { nodes: LIMIT * 8, text: MAX_TEXT };
-      let errors = 0;
       let nodes = LIMIT;
-      let iterations = LIMIT;
-      const safe = (fn) => {
-        try {
-          return fn();
-        } catch {
-          errors++;
-          return undefined;
+      const body = artifact.code.startsWith(SAFE_PRELUDE)
+        ? COUNTING_PRELUDE + artifact.code.slice(SAFE_PRELUDE.length)
+        : artifact.code;
+      const compiled = new NativeFunction(
+        "DIL",
+        "GenUI",
+        "__dil",
+        ...HOST_COMPONENTS,
+        `"use strict";\n${body}`,
+      );
+      const convert = (value, depth) => {
+        if (depth > MAX_TREE_DEPTH) throw new Error("DIL tree exceeds its depth limit");
+        if (value == null || typeof value === "boolean" || typeof value === "function") return [];
+        if (typeof value === "string" || typeof value === "number") {
+          if (--nodes < 0) throw new Error("DIL tree exceeds its node budget");
+          budget.text -= String(value).length;
+          if (budget.text < 0) throw new Error("DIL tree exceeds its text budget");
+          return value === "" ? [] : [{ kind: "text", value: String(value) }];
         }
-      };
-      const format = (value, depth = 0) => {
-        if (value == null || typeof value === "function" || depth > 16) return "";
-        if (typeof value === "string") return value;
-        if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
-        if (isArray(value))
-          return value
-            .slice(0, LIMIT)
-            .map((item) => format(item, depth + 1))
-            .join(", ");
-        return typeof value === "boolean" ? String(value) : (JSON.stringify(sanitize(value, budget)) ?? "");
-      };
-      const runtime = {
-        safe,
-        state,
-        text(value) {
-          if (nodes <= 0) return null;
-          const result = safe(() => sanitize(format(value), budget));
-          if (result) nodes--;
-          return result || null;
-        },
-        flatten(children) {
-          const result = [];
-          for (const child of children) {
-            if (child?.list) {
-              for (const item of child.list) result.push(item);
-            } else if (child != null) {
-              result.push(child);
-            }
+        if (isArray(value)) return value.flatMap((item) => convert(item, depth));
+        if (typeof value !== "object") return [];
+        const node = value;
+        if (node.type === DIL.Fragment) return convert(node.children, depth);
+        if (typeof node.type !== "string") return [];
+        if (--nodes < 0) throw new Error("DIL tree exceeds its node budget");
+        const props = Object.create(null);
+        const synthetic = node.props?.__dilSynthetic === true;
+        for (const [name, prop] of Object.entries(node.props ?? {})) {
+          if (name === "__dilSynthetic") continue;
+          if ((name === "onClick" || name === "onChange" || name === "onSubmit") && typeof prop === "function") {
+            const id = `h${renderId}:${nextHandlers.size}`;
+            nextHandlers.set(id, prop);
+            props[name] = { id };
+            if (node.type === "button" && name === "onClick") buttons.push(id);
+            continue;
           }
-          return { list: result };
-        },
-        each(items, path, renderItem) {
-          const result = [];
-          if (isArray(items)) {
-            for (let i = 0; i < items.length && nodes > 0 && iterations-- > 0; i++) {
-              if (!(i in items)) continue;
-              const item = safe(() => renderItem(items[i], i, `${path}.${i}`));
-              if (item?.list) for (const child of item.list) result.push(child);
-            }
+          let property;
+          try {
+            property = prop == null ? undefined : sanitize(prop, budget);
+          } catch {
+            property = undefined;
           }
-          return { list: result };
-        },
-        node(site, path, dynamic, children) {
-          if (nodes-- <= 0) return null;
-          const props = Object.create(null);
-          for (const [name, value] of Object.entries(dynamic)) {
-            if (name === "onClick" || name === "onChange" || name === "onSubmit") {
-              if (typeof value !== "function") continue;
-              const { offset, name: tag } = data[site];
-              const id = `${offset}:${tag}:${path}:${name}`;
-              if (tag === "button" && name === "onClick") buttons.push(id);
-              handlers.set(id, value);
-              props[name] = { id };
-            } else {
-              const property = safe(() => sanitize(value, budget));
-              if (property !== undefined) props[name] = property;
-            }
-          }
-          return [site, props, children().list];
-        },
+          if (property !== undefined) props[name] = property;
+        }
+        return [{ kind: "element", name: node.type, ...(synthetic ? { synthetic } : {}), props, children: convert(node.children, depth + 1) }];
       };
-      const tree = nextFactory(runtime, data, DIL, GenUI, "")?.list;
-      if (!isArray(tree)) throw new Error("DIL program did not return a tree");
-      const saved = sanitize(Object.fromEntries(slots), budget);
-      return { tree, handlers, buttons, state: saved, errors };
+      compiled(DIL, GenUI, DIL, ...HOST_COMPONENTS);
+      if (DIL.__root === undefined) throw new Error("DIL artifact did not render a tree");
+      const tree = convert(DIL.__root, 0);
+      if (!isArray(tree)) throw new Error("DIL artifact did not render a tree");
+      const state = sanitize(Object.fromEntries(slots), budget);
+      return { tree, handlers: nextHandlers, buttons, state, errors: DIL.__errors, renderId };
     }
 
     return {
-      load(program) {
-        const artifact = assembleProgram(program);
-        const nextFactory = new NativeFunction(
-          "__dil",
-          "__dilData",
-          "DIL",
-          "GenUI",
-          "__dilPath",
-          `"use strict";\n${artifact.code}`,
-        );
+      load(nextArtifact, renderId) {
         const before = new Map(slots);
         try {
-          const next = render(nextFactory, artifact.data);
-          callbacks = next.handlers;
-          factory = nextFactory;
-          programData = artifact.data;
-          return { tree: next.tree, buttons: next.buttons, state: next.state, effects: [], errors: artifact.errors + next.errors };
+          const { handlers: nextHandlers, ...result } = resolve(nextArtifact, renderId);
+          artifact = nextArtifact;
+          handlers = nextHandlers;
+          return { ...result, effects: [] };
         } catch (error) {
           slots = before;
           throw error;
         }
       },
       probe(id) {
-        const handler = callbacks.get(id);
+        const handler = handlers.get(id);
         if (!handler) return false;
         const recorded = [];
         effects = recorded;
@@ -206,19 +180,20 @@
         }
         return recorded.length > 0;
       },
-      trigger(id, args = []) {
-        if (!factory || !callbacks.has(id)) return null;
+      trigger(id, args = [], renderId) {
+        const handler = handlers.get(id);
+        if (!artifact || !handler) return null;
         const before = new Map(slots);
         const performed = [];
         effects = performed;
         updating = true;
         try {
-          callbacks.get(id)(...args);
+          handler(...args);
           updating = false;
           effects = undefined;
-          const next = render(factory, programData);
-          callbacks = next.handlers;
-          return { tree: next.tree, buttons: next.buttons, state: next.state, effects: performed, errors: next.errors };
+          const { handlers: nextHandlers, ...result } = resolve(artifact, renderId);
+          handlers = nextHandlers;
+          return { ...result, effects: performed };
         } catch {
           slots = before;
           return null;
@@ -229,10 +204,8 @@
       },
     };
   }
-
   if (typeof exports === "object") {
-    exports.assembleProgram = assembleProgram;
-    exports.createProgram = createProgram;
+    exports.createExecutor = createExecutor;
   }
 
   if (
@@ -247,7 +220,7 @@
         if (!port) return;
         const send = port.postMessage.bind(port);
         const receive = port.addEventListener.bind(port);
-        const program = createProgram(event.data.state);
+        const program = createExecutor(event.data.state);
         for (const name of ["Worker", "SharedWorker", "BroadcastChannel", "postMessage", "importScripts", "close"]) {
           Object.defineProperty(self, name, { value: undefined, writable: false, configurable: false });
         }
@@ -255,8 +228,8 @@
         if (task) {
           for (const handler of task.buttons) {
             try {
-              const specimen = createProgram(copy(event.data.state));
-              specimen.load(task.program);
+              const specimen = createExecutor(copy(event.data.state));
+              specimen.load(task.artifact, task.id);
               if (specimen.probe(handler)) send({ handler });
             } catch {}
           }
@@ -269,10 +242,10 @@
           let result = null;
           try {
             if (request.kind === "load") {
-              result = program.load(request.program);
+              result = program.load(request.artifact, id);
               revision = request.revision;
             } else if (request.kind === "trigger" && request.revision === revision) {
-              result = program.trigger(request.handler, request.args);
+              result = program.trigger(request.handler, request.args, id);
             }
             if (result) result = copy(result);
           } catch {

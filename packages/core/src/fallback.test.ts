@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseDocument, tidyFallback, toFallbackMarkdown } from "./index.ts";
+import { parseMarkdown } from "./markdown-syntax.ts";
 
 function markdown(source: string): string {
   return toFallbackMarkdown(parseDocument(source).tree);
@@ -21,10 +22,13 @@ test("dynamic values disappear instead of leaking source code", () => {
   assert.equal(out.includes("useState"), false);
 });
 
-test("the first if branch and each body stand in for control flow", () => {
-  const out = markdown("{#if a}显示的文本{:else}不该出现{/if}\n\n{#each xs as x}- {x}{/each}");
-  assert.equal(out.includes("显示的文本"), true);
-  assert.equal(out.includes("不该出现"), false);
+test("a conditional projects the branch a reader sees before interacting", () => {
+  assert.equal(markdown("{#if a}隐藏文本{:else}默认文本{/if}"), "默认文本");
+  assert.equal(markdown("{#if a}隐藏文本{/if}"), "");
+});
+
+test("an each body is projected once, with its interpolations dropped", () => {
+  assert.equal(markdown("{#each xs as x}第 {x} 项{/each}"), "第  项");
 });
 
 test("lists, tables and blockquotes project to readable markdown", () => {
@@ -34,25 +38,21 @@ test("lists, tables and blockquotes project to readable markdown", () => {
 
   const table = markdown("| 方案 | 风险 |\n|---|---|\n| `DIL` | 需要容错 |");
   assert.equal(table.includes("| 方案 | 风险 |"), true);
-  assert.equal(table.includes("| --- | --- |"), true);
+  assert.equal(table.includes("|--------|--------|"), true);
   assert.equal(table.includes("| `DIL` | 需要容错 |"), true);
 
   const quote = markdown("> 容错解析不是可选项。");
   assert.equal(quote.includes("> 容错解析不是可选项。"), true);
 });
 
-test("code fences, math and links keep their source form", () => {
+test("code fences, inline math and links keep their source form", () => {
   const out = markdown(
     '```bash\ncurl -s https://example.com | head -3\n```\n\n公式 $E = mc^2$ 与 [示例](https://a.test "标题")。',
   );
   assert.equal(out.includes("```bash"), true);
   assert.equal(out.includes("curl -s https://example.com | head -3"), true);
   assert.equal(out.includes("$E = mc^2$"), true);
-  assert.equal(out.includes('[示例](https://a.test "标题")'), true);
-
-  const block = markdown("$$\nE = mc^2\n$$");
-  assert.equal(block.includes("$$"), true, "block math keeps its delimiters");
-  assert.equal(block.includes("E = mc^2"), true);
+  assert.match(out, /\[示例\]\(https:\/\/a\.test "标题"\)/);
 });
 
 test("strikethrough and ordered-list start survive the projection", () => {
@@ -74,4 +74,50 @@ test("tidyFallback drops debris but never edits a fenced block", () => {
   assert.equal(tidy.includes("## %\n\n真文字"), false);
   assert.equal(tidy.split("\n")[0], "真文字");
   assert.equal(tidy.includes("```\n## %\n---\n```"), true);
+});
+
+test("marker-free lists project as plain paragraphs", () => {
+  assert.equal(
+    markdown('<list marker="none"><list-item>First item</list-item><list-item>Second item</list-item></list>'),
+    "First item\n\nSecond item",
+  );
+});
+
+test("both display math inputs project to dollar fences with their full body", () => {
+  const body = "a\n+\n\nb";
+  assert.equal(markdown(`$$\n${body}\n$$`), `$$\n${body}\n$$`);
+  assert.equal(markdown(`\\[\n${body}\n\\]`), `$$\n${body}\n$$`);
+});
+
+test("Markdown links retain their visible label, relative target and title", () => {
+  const source = '[Read \\[section\\]](../guide "Chapter \\"A\\"")';
+  const paragraph = parseMarkdown(markdown(source), "document").children[0];
+  assert.equal(paragraph.type, "paragraph");
+  const link = paragraph.children[0];
+  assert.equal(link.type, "link");
+  assert.equal(link.url, "../guide");
+  assert.equal(link.title, 'Chapter "A"');
+  assert.deepEqual(
+    link.children.map((child) => (child.type === "text" ? child.value : child.type)),
+    ["Read [section]"],
+  );
+  assert.equal(markdown("<Link>Read the guide</Link>"), "Read the guide");
+});
+
+test("a pipe in a header cell keeps the table two columns wide", () => {
+  const out = markdown("| City \\| Region | Population |\n| --- | --- |\n| Shanghai | 25 million |");
+  const table = parseMarkdown(out, "document").children[0];
+  assert.equal(table.type, "table");
+  assert.equal(table.children[0].children.length, 2);
+  assert.match(out, /^\|--------\|--------\|$/m);
+});
+
+test("form fallback shows authored placeholders and a link visitors can follow", () => {
+  assert.equal(
+    markdown(
+      '<form><input value={name} placeholder="Your name"/><textarea placeholder="补充说明"/><input value={email}/><button onClick={() => GenUI.openUrl(\'https://a.test\')}>Guide</button></form>',
+    ),
+    "Your name\n\n补充说明\n\n[Guide](https://a.test)",
+  );
+  assert.equal(markdown("<textarea value={detail}/>"), "");
 });
