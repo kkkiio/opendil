@@ -7,11 +7,11 @@
  * (`conformance/artifact.test.ts`): guard placement, when the `__dilSafe` prelude is
  * emitted, constant allocation order, the prose-run wrapping (a run of components carries
  * no `text`), the single-root body shape (no `Fragment` around one root), which host tags
- * resolve to a component call and which degrade to text, widget contracts for fenced
- * blocks, host-tag resolution ids, and statement key injection. Platform facts the
- * compiler cannot derive from source arrive as options: the internal widget tag name, an
- * id factory (the platform allocates one id per fence or host tag, in document order), and
- * the DIL block's position in the message.
+ * resolve to a component call and which degrade to text, widget contracts for fenced and
+ * `<CodeBlock>` blocks, host-tag resolution ids, and statement key injection. Platform
+ * facts the compiler cannot derive from source arrive as options: the internal widget tag
+ * name, an id factory (the platform allocates one id per fence or host tag, in document
+ * order), and the DIL block's position in the message.
  */
 
 import { toFallbackMarkdown } from "./fallback.ts";
@@ -75,7 +75,13 @@ const RAW_CHILD_TAGS = new Set([
 const HOST_TAGS = new Set(["Cite", "Link", "Entity", "AsyncImage", "AsyncImageGroup"]);
 
 /** String props the reference compiler allocates into the constants table. */
-const CONTENT_PROPS = new Set(["math.value", "Entity.value", "textarea.placeholder", "input.placeholder"]);
+const CONTENT_PROPS = new Set([
+  "math.value",
+  "Entity.value",
+  "Link.title",
+  "textarea.placeholder",
+  "input.placeholder",
+]);
 
 /** Inline tags Markdown itself produces (`**x**`, `` `x` ``, `[x](y)`); a run of these is
  * prose wherever it appears. */
@@ -265,7 +271,7 @@ class Serializer {
         return this.emitEach(node);
       case "element":
         if (this.isElementOnlyParagraph(node)) return this.emitNode(node.children[0], rawExpr);
-        if (node.name === "code-block") return this.emitWidget();
+        if (node.name === "code-block" || node.name === "CodeBlock") return this.emitWidget();
         if (HOST_TAGS.has(node.name)) {
           return this.resolvable(node) ? this.emitHostTag(node) : this.emitDegradedHostTag(node);
         }
@@ -359,14 +365,14 @@ class Serializer {
       if (emitted.dynamic) attrsDynamic = true;
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
-    const childrenDynamic = node.children.some((child) => child.type === "expr");
-    const dynamic = attrsDynamic || childrenDynamic;
+    const singleDynamicChild = node.children.length === 1 && node.children[0].type === "expr";
+    const dynamic = attrsDynamic || singleDynamicChild;
     const raw = RAW_CHILD_TAGS.has(node.name);
     if (node.name === "svg") this.svgDepth++;
     const children = this.emitChildren(
       node.children,
       !raw,
-      childrenDynamic && !attrsDynamic,
+      singleDynamicChild && !attrsDynamic,
       node.name !== "table-cell",
     );
     if (node.name === "svg") this.svgDepth--;
