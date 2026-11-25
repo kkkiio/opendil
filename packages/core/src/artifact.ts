@@ -309,11 +309,10 @@ class Serializer {
         return expression?.node.type === "SequenceExpression" ? `(${code})` : code;
       }
       case "fence":
+        if (this.preserveRenderDetails) return this.emitElement(fenceToElement(node));
         return node.kind === "math"
           ? `__dil.jsx("math",{"block":true,"value":${this.alloc(node.value)}})`
-          : this.preserveRenderDetails
-            ? this.emitElement(fenceToElement(node))
-            : this.emitWidget();
+          : this.emitWidget();
       case "if":
         return this.emitIf(node);
       case "each":
@@ -390,7 +389,7 @@ class Serializer {
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
     props.push(`"__resolutionId":${this.takeId()}`);
-    if (this.preserveRenderDetails && node.name === "Link" && node.synthetic) props.push('"__dilSynthetic":true');
+    if (this.preserveRenderDetails && node.synthetic) props.push('"__dilSynthetic":true');
     const children = this.emitChildParts(node.children, true).join(",");
     const call = `__dil.jsx(${node.name},{${props.join(",")}}${children ? `,${children}` : ""})`;
     return this.safe(call, "null");
@@ -415,7 +414,12 @@ class Serializer {
       if (emitted.dynamic) attrsDynamic = true;
       props.push(`${JSON.stringify(attr.name)}:${emitted.text}`);
     }
-    if ((node.name === "code-block" || node.name === "CodeBlock") && !node.closed) props.push('"closed":false');
+    if (this.preserveRenderDetails) {
+      if (node.synthetic) props.push('"__dilSynthetic":true');
+      if (!node.closed && (node.name === "code-block" || node.name === "CodeBlock" || node.name === "math")) {
+        props.push('"closed":false');
+      }
+    }
     const singleDynamicChild = node.children.length === 1 && node.children[0].type === "expr";
     const dynamic = attrsDynamic || singleDynamicChild;
     const listMarker = startsListMarker(node);

@@ -121,7 +121,7 @@
         if (typeof node.type !== "string") return [];
         if (--nodes < 0 || depth > 16) throw new Error("DIL tree exceeds its node budget");
         const props = Object.create(null);
-        const synthetic = node.type === "Link" && node.props?.__dilSynthetic === true;
+        const synthetic = node.props?.__dilSynthetic === true;
         for (const [name, prop] of Object.entries(node.props ?? {})) {
           if (name === "__dilSynthetic") continue;
           if ((name === "onClick" || name === "onChange" || name === "onSubmit") && typeof prop === "function") {

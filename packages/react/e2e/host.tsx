@@ -8,14 +8,14 @@ const first = [
   "<text>Checked items: {count}</text>",
   "<button onClick={() => setCount(count + 1)}>Check item</button>",
   "",
-  "[Guide](./guide)",
+  "Tips: ~~Old guide~~ [Guide](./guide)",
   "",
   "```text",
   "Inventory example",
   "```",
 ].join("\n");
-const middle = `${first}\n\n<text>Checking the inventory</text>`;
-const final = `${middle}\n\n<text>Inventory complete</text>`;
+const middle = `${first}\n\n<text>Checking the inventory</text>\n\n$$\nx^2`;
+const final = `${middle}\n$$\n\n<text>Inventory complete</text>`;
 const execution = new URL(location.href).searchParams.get("mode") === "direct" ? "direct" : "sandbox";
 
 function Inventory() {

@@ -29,16 +29,22 @@ for (const mode of ["sandbox", "direct"]) {
     await page.goto(`https://dil.test/?mode=${mode}`);
     await expect(page.getByText("Checked items: 0")).toBeVisible();
     await expect(page.getByRole("link", { name: "Guide" })).toHaveAttribute("href", "./guide");
+    await expect(page.locator("p").filter({ hasText: "Tips:" })).toBeVisible();
+    await expect(page.locator("p del")).toHaveText("Old guide");
     await expect(page.locator("pre").getByText("Inventory example")).toBeVisible();
     await page.getByRole("button", { name: "Check item" }).click();
     await expect(page.getByText("Checked items: 1")).toBeVisible();
 
     await page.getByRole("button", { name: "More output" }).click();
     await expect(page.getByText("Checking the inventory")).toBeVisible();
+    await expect(page.locator("pre").filter({ hasText: "x^2" })).toBeVisible();
+    await expect(page.locator(".katex-display")).toHaveCount(0);
     await expect(page.getByText("Checked items: 1")).toBeVisible();
 
     await page.getByRole("button", { name: "Finish output" }).click();
     await expect(page.getByText("Inventory complete")).toBeVisible();
+    await expect(page.locator(".katex-display")).toBeVisible();
+    await expect(page.locator("pre").filter({ hasText: "x^2" })).toHaveCount(0);
     await page.getByRole("button", { name: "Check item" }).click();
     await expect(page.getByText("Checked items: 2")).toBeVisible();
 
